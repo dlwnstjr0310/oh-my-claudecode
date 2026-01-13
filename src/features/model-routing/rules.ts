@@ -25,12 +25,8 @@ export const DEFAULT_ROUTING_RULES: RoutingRule[] = [
     priority: 100,
   },
 
-  {
-    name: 'previous-failure-escalation',
-    condition: (ctx) => (ctx.previousFailures ?? 0) > 0,
-    action: { tier: 'HIGH', reason: 'Escalating due to previous failure' },
-    priority: 90,
-  },
+  // NOTE: Escalation is handled by routeWithEscalation(), not in rules
+  // This allows gradual escalation: LOW → MEDIUM → HIGH
 
   // ============ Agent-Based Rules ============
 
