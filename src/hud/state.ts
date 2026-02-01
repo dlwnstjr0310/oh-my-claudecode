@@ -199,6 +199,7 @@ export function readHudConfig(): HudConfig {
         ...DEFAULT_HUD_CONFIG.thresholds,
         ...config.thresholds,
       },
+      staleTaskThresholdMinutes: config.staleTaskThresholdMinutes ?? DEFAULT_HUD_CONFIG.staleTaskThresholdMinutes,
     };
   } catch {
     return DEFAULT_HUD_CONFIG;

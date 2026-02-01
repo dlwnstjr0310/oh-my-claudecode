@@ -266,7 +266,7 @@ export interface HudConfig {
   preset: HudPreset;
   elements: HudElementConfig;
   thresholds: HudThresholds;
-  staleTaskThresholdMinutes?: number; // Default 30
+  staleTaskThresholdMinutes: number; // Default 30
 }
 
 export const DEFAULT_HUD_CONFIG: HudConfig = {
@@ -298,6 +298,7 @@ export const DEFAULT_HUD_CONFIG: HudConfig = {
     contextCritical: 85,
     ralphWarning: 7,
   },
+  staleTaskThresholdMinutes: 30,
 };
 
 export const PRESET_CONFIGS: Record<HudPreset, Partial<HudElementConfig>> = {

@@ -58,8 +58,13 @@ const THINKING_RECENCY_MS = 30_000; // 30 seconds
  *
  * For large files (>500KB), only parses the tail portion for performance.
  */
+export interface ParseTranscriptOptions {
+  staleTaskThresholdMinutes?: number;
+}
+
 export async function parseTranscript(
-  transcriptPath: string | undefined
+  transcriptPath: string | undefined,
+  options?: ParseTranscriptOptions
 ): Promise<TranscriptData> {
   // IMPORTANT: Clear module-level state at the start of each parse
   // to prevent stale data from previous HUD invocations
@@ -119,8 +124,9 @@ export async function parseTranscript(
     // Return partial results on error
   }
 
-  // Filter out stale agents (running for more than 30 minutes are likely abandoned)
-  const STALE_AGENT_THRESHOLD_MS = 30 * 60 * 1000; // 30 minutes
+  // Filter out stale agents (running for more than threshold minutes are likely abandoned)
+  const staleMinutes = options?.staleTaskThresholdMinutes ?? 30;
+  const STALE_AGENT_THRESHOLD_MS = staleMinutes * 60 * 1000;
   const now = Date.now();
 
   for (const agent of agentMap.values()) {

@@ -277,8 +277,13 @@ async function main(): Promise<void> {
 
     const cwd = stdin.cwd || process.cwd();
 
+    // Read configuration (before transcript parsing so we can use staleTaskThresholdMinutes)
+    const config = readHudConfig();
+
     // Parse transcript for agents and todos
-    const transcriptData = await parseTranscript(stdin.transcript_path);
+    const transcriptData = await parseTranscript(stdin.transcript_path, {
+      staleTaskThresholdMinutes: config.staleTaskThresholdMinutes,
+    });
 
     // Record token usage (auto-tracking)
     await recordTokenUsage(stdin, transcriptData);
@@ -292,9 +297,6 @@ async function main(): Promise<void> {
     // Read HUD state for background tasks
     const hudState = readHudState(cwd);
     const backgroundTasks = hudState?.backgroundTasks || [];
-
-    // Read configuration
-    const config = readHudConfig();
 
     // Fetch rate limits from OAuth API (if available)
     const rateLimits = config.elements.rateLimits !== false
