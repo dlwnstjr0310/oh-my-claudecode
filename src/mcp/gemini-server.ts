@@ -3,6 +3,9 @@
  *
  * Exposes `ask_gemini` tool via the Claude Agent SDK's createSdkMcpServer helper.
  * Tools will be available as mcp__g__ask_gemini
+ *
+ * Note: The standalone version (gemini-standalone-server.ts) is used for the
+ * external-process .mcp.json registration with proper stdio transport.
  */
 
 import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
@@ -20,8 +23,11 @@ const GEMINI_MODEL_FALLBACKS = [
   'gemini-3-pro-preview',
   'gemini-3-flash-preview',
   'gemini-2.5-pro',
-  'gemini-2.5-flash'
+  'gemini-2.5-flash',
 ];
+
+// Gemini is best for design review and implementation tasks (leverages 1M context)
+const GEMINI_VALID_ROLES = ['designer', 'executor'] as const;
 
 /**
  * Execute Gemini CLI command and return the response
@@ -69,22 +75,30 @@ function executeGemini(prompt: string, model?: string): Promise<string> {
 // Define the ask_gemini tool using the SDK tool() helper
 const askGeminiTool = tool(
   "ask_gemini",
-  "Send a prompt to Google Gemini CLI for large-context analysis, second-opinion review, or alternative perspective. Gemini excels at analyzing large files with its 1M token context window. Requires Gemini CLI to be installed (npm install -g @google/gemini-cli).",
+  "Send a prompt to Google Gemini CLI for design review or implementation validation. Gemini excels at analyzing large codebases with its 1M token context window. Requires agent_role (designer or executor). Requires Gemini CLI (npm install -g @google/gemini-cli).",
   {
     prompt: { type: "string", description: "The prompt to send to Gemini" },
-    model: { type: "string", description: `Gemini model to use (default: ${GEMINI_DEFAULT_MODEL}). Automatic fallback chain: gemini-3-pro-preview → gemini-3-flash-preview → gemini-2.5-pro → gemini-2.5-flash` },
+    agent_role: { type: "string", description: `Required. Agent perspective for Gemini: ${GEMINI_VALID_ROLES.join(', ')}. Gemini is optimized for design review and implementation tasks.` },
+    model: { type: "string", description: `Gemini model to use (default: ${GEMINI_DEFAULT_MODEL}). Automatic fallback chain: ${GEMINI_MODEL_FALLBACKS.join(' → ')}` },
     files: { type: "array", items: { type: "string" }, description: "File paths for Gemini to analyze (leverages 1M token context window)" },
-    system_prompt: { type: "string", description: "System prompt to inject - sets the personality/guidelines for Gemini. Takes precedence over agent_role." },
-    agent_role: { type: "string", description: "Agent role shortcut (e.g. 'designer', 'architect', 'critic'). Loads the agent's system prompt automatically. Ignored if system_prompt is provided." },
   } as any,
   async (args: any) => {
-    const { prompt, model = GEMINI_DEFAULT_MODEL, files, system_prompt, agent_role } = args as {
+    const { prompt, agent_role, model = GEMINI_DEFAULT_MODEL, files } = args as {
       prompt: string;
+      agent_role: string;
       model?: string;
       files?: string[];
-      system_prompt?: string;
-      agent_role?: string;
     };
+
+    // Validate agent_role
+    if (!agent_role || !(GEMINI_VALID_ROLES as readonly string[]).includes(agent_role)) {
+      return {
+        content: [{
+          type: 'text' as const,
+          text: `Invalid agent_role: "${agent_role}". Gemini requires one of: ${GEMINI_VALID_ROLES.join(', ')}`
+        }]
+      };
+    }
 
     // Check CLI availability
     const detection = detectGeminiCli();
@@ -97,8 +111,8 @@ const askGeminiTool = tool(
       };
     }
 
-    // Resolve system prompt from explicit param or agent role
-    const resolvedSystemPrompt = resolveSystemPrompt(system_prompt, agent_role);
+    // Resolve system prompt from agent role
+    const resolvedSystemPrompt = resolveSystemPrompt(undefined, agent_role);
 
     // Build file context
     let fileContext: string | undefined;

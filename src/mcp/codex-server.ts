@@ -3,6 +3,9 @@
  *
  * Exposes `ask_codex` tool via the Claude Agent SDK's createSdkMcpServer helper.
  * Tools will be available as mcp__x__ask_codex
+ *
+ * Note: The standalone version (codex-standalone-server.ts) is used for the
+ * external-process .mcp.json registration with proper stdio transport.
  */
 
 import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
@@ -14,6 +17,9 @@ import { resolveSystemPrompt, buildPromptWithSystemContext } from './prompt-inje
 // Default model can be overridden via environment variable
 const CODEX_DEFAULT_MODEL = process.env.OMC_CODEX_DEFAULT_MODEL || 'gpt-5.2';
 const CODEX_TIMEOUT = parseInt(process.env.OMC_CODEX_TIMEOUT || '60000', 10);
+
+// Codex is best for analytical/planning tasks
+const CODEX_VALID_ROLES = ['architect', 'planner', 'critic'] as const;
 
 /**
  * Parse Codex JSONL output to extract the final text response
@@ -92,22 +98,30 @@ function executeCodex(prompt: string, model: string): Promise<string> {
 // Define the ask_codex tool using the SDK tool() helper
 const askCodexTool = tool(
   "ask_codex",
-  "Send a prompt to OpenAI Codex CLI for a second-opinion analysis, code generation, or debugging perspective. Returns Codex's text response. Requires Codex CLI to be installed (npm install -g @openai/codex).",
+  "Send a prompt to OpenAI Codex CLI for analytical/planning tasks. Codex excels at architecture review, planning validation, and critical analysis. Requires agent_role (architect, planner, or critic). Requires Codex CLI (npm install -g @openai/codex).",
   {
     prompt: { type: "string", description: "The prompt to send to Codex" },
-    model: { type: "string", description: `Codex model to use (default: ${CODEX_DEFAULT_MODEL}). Set OMC_CODEX_DEFAULT_MODEL env var to change default. Options include: gpt-4o, gpt-4o-mini, o3-mini, o4-mini` },
+    agent_role: { type: "string", description: `Required. Agent perspective for Codex: ${CODEX_VALID_ROLES.join(', ')}. Codex is optimized for analytical/planning tasks.` },
+    model: { type: "string", description: `Codex model to use (default: ${CODEX_DEFAULT_MODEL}). Set OMC_CODEX_DEFAULT_MODEL env var to change default.` },
     context_files: { type: "array", items: { type: "string" }, description: "File paths to include as context (contents will be prepended to prompt)" },
-    system_prompt: { type: "string", description: "System prompt to inject - sets the personality/guidelines for Codex. Takes precedence over agent_role." },
-    agent_role: { type: "string", description: "Agent role shortcut (e.g. 'architect', 'critic', 'planner'). Loads the agent's system prompt automatically. Ignored if system_prompt is provided." },
   } as any,
   async (args: any) => {
-    const { prompt, model = CODEX_DEFAULT_MODEL, context_files, system_prompt, agent_role } = args as {
+    const { prompt, agent_role, model = CODEX_DEFAULT_MODEL, context_files } = args as {
       prompt: string;
+      agent_role: string;
       model?: string;
       context_files?: string[];
-      system_prompt?: string;
-      agent_role?: string;
     };
+
+    // Validate agent_role
+    if (!agent_role || !(CODEX_VALID_ROLES as readonly string[]).includes(agent_role)) {
+      return {
+        content: [{
+          type: 'text' as const,
+          text: `Invalid agent_role: "${agent_role}". Codex requires one of: ${CODEX_VALID_ROLES.join(', ')}`
+        }]
+      };
+    }
 
     // Check CLI availability
     const detection = detectCodexCli();
@@ -120,8 +134,8 @@ const askCodexTool = tool(
       };
     }
 
-    // Resolve system prompt from explicit param or agent role
-    const resolvedSystemPrompt = resolveSystemPrompt(system_prompt, agent_role);
+    // Resolve system prompt from agent role
+    const resolvedSystemPrompt = resolveSystemPrompt(undefined, agent_role);
 
     // Build file context
     let fileContext: string | undefined;
