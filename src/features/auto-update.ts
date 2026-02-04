@@ -57,6 +57,23 @@ export interface SisyphusConfig {
   setupCompleted?: string;
   /** Version of setup wizard that was completed */
   setupVersion?: string;
+  /** Stop hook callback configuration (#395) */
+  stopHookCallbacks?: {
+    file?: {
+      enabled: boolean;
+      path: string; // Supports {session_id}, {date}, {time} placeholders
+      format?: 'markdown' | 'json';
+    };
+    telegram?: {
+      enabled: boolean;
+      botToken?: string;
+      chatId?: string;
+    };
+    discord?: {
+      enabled: boolean;
+      webhookUrl?: string;
+    };
+  };
 }
 
 /**
