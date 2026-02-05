@@ -19,7 +19,7 @@ import {
 // Define the ask_gemini tool using the SDK tool() helper
 const askGeminiTool = tool(
   "ask_gemini",
-  "Send a prompt to Google Gemini CLI for design review or implementation validation. Gemini excels at analyzing large codebases with its 1M token context window. Requires agent_role to specify the perspective (designer or executor). Requires Gemini CLI (npm install -g @google/gemini-cli).",
+  "Send a prompt to Google Gemini CLI for design review or implementation validation. Gemini excels at analyzing large codebases with its 1M token context window. Requires agent_role to specify the perspective (designer, writer, or vision). Requires Gemini CLI (npm install -g @google/gemini-cli).",
   {
     agent_role: { type: "string", description: `Required. Agent perspective for Gemini: ${GEMINI_VALID_ROLES.join(', ')}. Gemini is optimized for design review and implementation tasks.` },
     files: { type: "array", items: { type: "string" }, description: "File paths for Gemini to analyze (leverages 1M token context window)" },

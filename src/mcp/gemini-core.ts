@@ -112,6 +112,13 @@ export function validateAndReadFile(filePath: string): string {
   }
   try {
     const resolved = resolve(filePath);
+
+    // Security: ensure file is within working directory (worktree boundary)
+    const cwd = process.cwd();
+    if (!resolved.startsWith(cwd + '/') && resolved !== cwd) {
+      return `[BLOCKED] File '${filePath}' is outside the working directory. Only files within the project are allowed.`;
+    }
+
     const stats = statSync(resolved);
     if (!stats.isFile()) {
       return `--- File: ${filePath} --- (Not a regular file)`;

@@ -13723,7 +13723,8 @@ function detectCodexCli(useCache = true) {
   if (useCache && codexCache) return codexCache;
   const installHint = "Install Codex CLI: npm install -g @openai/codex";
   try {
-    const path = (0, import_child_process.execSync)("which codex", { encoding: "utf-8", timeout: 5e3 }).trim();
+    const command = process.platform === "win32" ? "where codex" : "which codex";
+    const path = (0, import_child_process.execSync)(command, { encoding: "utf-8", timeout: 5e3 }).trim();
     let version2;
     try {
       version2 = (0, import_child_process.execSync)("codex --version", { encoding: "utf-8", timeout: 5e3 }).trim();
@@ -13898,6 +13899,10 @@ function validateAndReadFile(filePath) {
   }
   try {
     const resolved = (0, import_path2.resolve)(filePath);
+    const cwd = process.cwd();
+    if (!resolved.startsWith(cwd + "/") && resolved !== cwd) {
+      return `[BLOCKED] File '${filePath}' is outside the working directory. Only files within the project are allowed.`;
+    }
     const stats = (0, import_fs2.statSync)(resolved);
     if (!stats.isFile()) {
       return `--- File: ${filePath} --- (Not a regular file)`;

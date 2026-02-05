@@ -28,7 +28,8 @@ export function detectCodexCli(useCache = true): CliDetectionResult {
   const installHint = 'Install Codex CLI: npm install -g @openai/codex';
 
   try {
-    const path = execSync('which codex', { encoding: 'utf-8', timeout: 5000 }).trim();
+    const command = process.platform === 'win32' ? 'where codex' : 'which codex';
+    const path = execSync(command, { encoding: 'utf-8', timeout: 5000 }).trim();
     let version: string | undefined;
     try {
       version = execSync('codex --version', { encoding: 'utf-8', timeout: 5000 }).trim();
@@ -59,7 +60,8 @@ export function detectGeminiCli(useCache = true): CliDetectionResult {
   const installHint = 'Install Gemini CLI: npm install -g @google/gemini-cli (see https://github.com/google-gemini/gemini-cli)';
 
   try {
-    const path = execSync('which gemini', { encoding: 'utf-8', timeout: 5000 }).trim();
+    const command = process.platform === 'win32' ? 'where gemini' : 'which gemini';
+    const path = execSync(command, { encoding: 'utf-8', timeout: 5000 }).trim();
     let version: string | undefined;
     try {
       version = execSync('gemini --version', { encoding: 'utf-8', timeout: 5000 }).trim();

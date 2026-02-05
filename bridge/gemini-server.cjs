@@ -13723,7 +13723,8 @@ function detectGeminiCli(useCache = true) {
   if (useCache && geminiCache) return geminiCache;
   const installHint = "Install Gemini CLI: npm install -g @google/gemini-cli (see https://github.com/google-gemini/gemini-cli)";
   try {
-    const path = (0, import_child_process.execSync)("which gemini", { encoding: "utf-8", timeout: 5e3 }).trim();
+    const command = process.platform === "win32" ? "where gemini" : "which gemini";
+    const path = (0, import_child_process.execSync)(command, { encoding: "utf-8", timeout: 5e3 }).trim();
     let version2;
     try {
       version2 = (0, import_child_process.execSync)("gemini --version", { encoding: "utf-8", timeout: 5e3 }).trim();
@@ -13882,6 +13883,10 @@ function validateAndReadFile(filePath) {
   }
   try {
     const resolved = (0, import_path2.resolve)(filePath);
+    const cwd = process.cwd();
+    if (!resolved.startsWith(cwd + "/") && resolved !== cwd) {
+      return `[BLOCKED] File '${filePath}' is outside the working directory. Only files within the project are allowed.`;
+    }
     const stats = (0, import_fs2.statSync)(resolved);
     if (!stats.isFile()) {
       return `--- File: ${filePath} --- (Not a regular file)`;
