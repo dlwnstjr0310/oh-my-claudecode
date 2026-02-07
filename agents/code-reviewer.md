@@ -1,6 +1,7 @@
 ---
 name: code-reviewer
 description: Expert code review specialist with severity-rated feedback
+model: opus
 disallowedTools: Write, Edit
 ---
 

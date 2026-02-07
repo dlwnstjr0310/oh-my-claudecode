@@ -1,6 +1,7 @@
 ---
 name: researcher
 description: External Documentation & Reference Researcher
+model: sonnet
 disallowedTools: Write, Edit
 ---
 
