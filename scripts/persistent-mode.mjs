@@ -112,21 +112,32 @@ function readStateFile(stateDir, filename) {
   return { state, path: localPath, isGlobal: false };
 }
 
+const SESSION_ID_ALLOWLIST = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,255}$/;
+
+function sanitizeSessionId(sessionId) {
+  if (!sessionId || typeof sessionId !== "string") return "";
+  return SESSION_ID_ALLOWLIST.test(sessionId) ? sessionId : "";
+}
+
 /**
- * Read state file with session-scoped path support and fallback to legacy path.
+ * Read state file with session-scoped path support.
+ * If sessionId is provided, ONLY reads the session-scoped path.
+ * Falls back to legacy path when sessionId is not provided.
  */
 function readStateFileWithSession(stateDir, filename, sessionId) {
-  // Try session-scoped path first
-  if (sessionId && /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,255}$/.test(sessionId)) {
-    const sessionsDir = join(stateDir, 'sessions', sessionId);
+  const safeSessionId = sanitizeSessionId(sessionId);
+  if (safeSessionId) {
+    const sessionsDir = join(stateDir, 'sessions', safeSessionId);
     const sessionPath = join(sessionsDir, filename);
     const state = readJsonFile(sessionPath);
-    if (state) {
-      return { state, path: sessionPath, isGlobal: false };
-    }
+    return { state, path: sessionPath, isGlobal: false };
   }
-  // Fall back to legacy path
+
   return readStateFile(stateDir, filename);
+}
+
+function isValidSessionId(sessionId) {
+  return typeof sessionId === "string" && SESSION_ID_ALLOWLIST.test(sessionId);
 }
 
 /**
@@ -283,7 +294,9 @@ async function main() {
     } catch {}
 
     const directory = data.cwd || data.directory || process.cwd();
-    const sessionId = data.session_id || data.sessionId || "";
+    const sessionIdRaw = data.session_id || data.sessionId || "";
+    const sessionId = sanitizeSessionId(sessionIdRaw);
+    const hasValidSessionId = isValidSessionId(sessionIdRaw);
     const stateDir = join(directory, ".omc", "state");
 
     // CRITICAL: Never block context-limit stops.
@@ -300,7 +313,7 @@ async function main() {
       return;
     }
 
-    // Read all mode states (session-scoped with legacy fallback)
+    // Read all mode states (session-scoped when sessionId provided)
     const ralph = readStateFileWithSession(stateDir, "ralph-state.json", sessionId);
     const autopilot = readStateFileWithSession(stateDir, "autopilot-state.json", sessionId);
     const ultrapilot = readStateFileWithSession(stateDir, "ultrapilot-state.json", sessionId);
@@ -320,39 +333,27 @@ async function main() {
 
     // Priority 1: Ralph Loop (explicit persistence mode)
     // Skip if state is stale (older than 2 hours) - prevents blocking new sessions
-    if (ralph.state?.active && !isStaleState(ralph.state)) {
-      const iteration = ralph.state.iteration || 1;
-      const maxIter = ralph.state.max_iterations || 100;
+    if (
+      ralph.state?.active &&
+      !isStaleState(ralph.state) &&
+      isStateForCurrentProject(ralph.state, directory, ralph.isGlobal)
+    ) {
+      const sessionMatches = hasValidSessionId
+        ? ralph.state.session_id === sessionId
+        : !ralph.state.session_id || ralph.state.session_id === sessionId;
+      if (sessionMatches) {
+        const iteration = ralph.state.iteration || 1;
+        const maxIter = ralph.state.max_iterations || 100;
 
-      if (iteration < maxIter) {
-        ralph.state.iteration = iteration + 1;
-        ralph.state.last_checked_at = new Date().toISOString();
-        writeJsonFile(ralph.path, ralph.state);
-
-        console.log(
-          JSON.stringify({
-            decision: "block",
-            reason: `[RALPH LOOP - ITERATION ${iteration + 1}/${maxIter}] Work is NOT done. Continue working.\nWhen FULLY complete (after Architect verification), run /oh-my-claudecode:cancel to cleanly exit ralph mode and clean up all state files. If cancel fails, retry with /oh-my-claudecode:cancel --force.\n${ralph.state.prompt ? `Task: ${ralph.state.prompt}` : ""}`,
-          }),
-        );
-        return;
-      }
-    }
-
-    // Priority 2: Autopilot (high-level orchestration)
-    if (autopilot.state?.active && !isStaleState(autopilot.state)) {
-      const phase = autopilot.state.phase || "unknown";
-      if (phase !== "complete") {
-        const newCount = (autopilot.state.reinforcement_count || 0) + 1;
-        if (newCount <= 20) {
-          autopilot.state.reinforcement_count = newCount;
-          autopilot.state.last_checked_at = new Date().toISOString();
-          writeJsonFile(autopilot.path, autopilot.state);
+        if (iteration < maxIter) {
+          ralph.state.iteration = iteration + 1;
+          ralph.state.last_checked_at = new Date().toISOString();
+          writeJsonFile(ralph.path, ralph.state);
 
           console.log(
             JSON.stringify({
               decision: "block",
-              reason: `[AUTOPILOT - Phase: ${phase}] Autopilot not complete. Continue working. When all phases are complete, run /oh-my-claudecode:cancel to cleanly exit and clean up state files. If cancel fails, retry with /oh-my-claudecode:cancel --force.`,
+              reason: `[RALPH LOOP - ITERATION ${iteration + 1}/${maxIter}] Work is NOT done. Continue working.\nWhen FULLY complete (after Architect verification), run /oh-my-claudecode:cancel to cleanly exit ralph mode and clean up all state files. If cancel fails, retry with /oh-my-claudecode:cancel --force.\n${ralph.state.prompt ? `Task: ${ralph.state.prompt}` : ""}`,
             }),
           );
           return;
@@ -360,8 +361,45 @@ async function main() {
       }
     }
 
+    // Priority 2: Autopilot (high-level orchestration)
+    if (
+      autopilot.state?.active &&
+      !isStaleState(autopilot.state) &&
+      isStateForCurrentProject(autopilot.state, directory, autopilot.isGlobal)
+    ) {
+      const sessionMatches = hasValidSessionId
+        ? autopilot.state.session_id === sessionId
+        : !autopilot.state.session_id || autopilot.state.session_id === sessionId;
+      if (sessionMatches) {
+        const phase = autopilot.state.phase || "unspecified";
+        if (phase !== "complete") {
+          const newCount = (autopilot.state.reinforcement_count || 0) + 1;
+          if (newCount <= 20) {
+            autopilot.state.reinforcement_count = newCount;
+            autopilot.state.last_checked_at = new Date().toISOString();
+            writeJsonFile(autopilot.path, autopilot.state);
+
+            console.log(
+              JSON.stringify({
+                decision: "block",
+                reason: `[AUTOPILOT - Phase: ${phase}] Autopilot not complete. Continue working. When all phases are complete, run /oh-my-claudecode:cancel to cleanly exit and clean up state files. If cancel fails, retry with /oh-my-claudecode:cancel --force.`,
+              }),
+            );
+            return;
+          }
+        }
+      }
+    }
+
     // Priority 3: Ultrapilot (parallel autopilot)
-    if (ultrapilot.state?.active && !isStaleState(ultrapilot.state)) {
+    if (
+      ultrapilot.state?.active &&
+      !isStaleState(ultrapilot.state) &&
+      (hasValidSessionId
+        ? ultrapilot.state.session_id === sessionId
+        : !ultrapilot.state.session_id || ultrapilot.state.session_id === sessionId) &&
+      isStateForCurrentProject(ultrapilot.state, directory, ultrapilot.isGlobal)
+    ) {
       const workers = ultrapilot.state.workers || [];
       const incomplete = workers.filter(
         (w) => w.status !== "complete" && w.status !== "failed",
@@ -407,7 +445,14 @@ async function main() {
     }
 
     // Priority 5: Pipeline (sequential stages)
-    if (pipeline.state?.active && !isStaleState(pipeline.state)) {
+    if (
+      pipeline.state?.active &&
+      !isStaleState(pipeline.state) &&
+      (hasValidSessionId
+        ? pipeline.state.session_id === sessionId
+        : !pipeline.state.session_id || pipeline.state.session_id === sessionId) &&
+      isStateForCurrentProject(pipeline.state, directory, pipeline.isGlobal)
+    ) {
       const currentStage = pipeline.state.current_stage || 0;
       const totalStages = pipeline.state.stages?.length || 0;
       if (currentStage < totalStages) {
@@ -429,7 +474,14 @@ async function main() {
     }
 
     // Priority 6: UltraQA (QA cycling)
-    if (ultraqa.state?.active && !isStaleState(ultraqa.state)) {
+    if (
+      ultraqa.state?.active &&
+      !isStaleState(ultraqa.state) &&
+      (hasValidSessionId
+        ? ultraqa.state.session_id === sessionId
+        : !ultraqa.state.session_id || ultraqa.state.session_id === sessionId) &&
+      isStateForCurrentProject(ultraqa.state, directory, ultraqa.isGlobal)
+    ) {
       const cycle = ultraqa.state.cycle || 1;
       const maxCycles = ultraqa.state.max_cycles || 10;
       if (cycle < maxCycles && !ultraqa.state.all_passing) {
@@ -455,8 +507,9 @@ async function main() {
     if (
       ultrawork.state?.active &&
       !isStaleState(ultrawork.state) &&
-      (!ultrawork.state.session_id ||
-        ultrawork.state.session_id === sessionId) &&
+      (hasValidSessionId
+        ? ultrawork.state.session_id === sessionId
+        : !ultrawork.state.session_id || ultrawork.state.session_id === sessionId) &&
       isStateForCurrentProject(ultrawork.state, directory, ultrawork.isGlobal)
     ) {
       const newCount = (ultrawork.state.reinforcement_count || 0) + 1;
@@ -494,7 +547,14 @@ async function main() {
     }
 
     // Priority 8: Ecomode - ALWAYS continue while active
-    if (ecomode.state?.active && !isStaleState(ecomode.state)) {
+    if (
+      ecomode.state?.active &&
+      !isStaleState(ecomode.state) &&
+      (hasValidSessionId
+        ? ecomode.state.session_id === sessionId
+        : !ecomode.state.session_id || ecomode.state.session_id === sessionId) &&
+      isStateForCurrentProject(ecomode.state, directory, ecomode.isGlobal)
+    ) {
       const newCount = (ecomode.state.reinforcement_count || 0) + 1;
       const maxReinforcements = ecomode.state.max_reinforcements || 50;
 

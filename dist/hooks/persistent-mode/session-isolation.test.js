@@ -83,8 +83,8 @@ describe("Persistent Mode Session Isolation (Issue #311)", () => {
             expect(result.mode).toBe("none");
         });
     });
-    describe("persistent-mode.cjs script session isolation", () => {
-        const scriptPath = join(process.cwd(), "scripts", "persistent-mode.cjs");
+    describe("persistent-mode.mjs script session isolation", () => {
+        const scriptPath = join(process.cwd(), "scripts", "persistent-mode.mjs");
         function runPersistentModeScript(input) {
             try {
                 const result = execSync(`node "${scriptPath}"`, {
@@ -162,6 +162,48 @@ describe("Persistent Mode Session Isolation (Issue #311)", () => {
             expect(output.continue).toBe(true);
             expect(output.decision).toBeUndefined();
         });
+        it("should ignore invalid sessionId when reading session-scoped state", () => {
+            const sessionId = "session-valid";
+            createUltraworkState(tempDir, sessionId, "Session task");
+            const output = runPersistentModeScript({
+                directory: tempDir,
+                sessionId: "../session-valid",
+            });
+            expect(output.continue).toBe(true);
+            expect(output.decision).toBeUndefined();
+        });
+        it("should not block legacy state when invalid sessionId is provided", () => {
+            const stateDir = join(tempDir, ".omc", "state");
+            mkdirSync(stateDir, { recursive: true });
+            writeFileSync(join(stateDir, "ultrawork-state.json"), JSON.stringify({
+                active: true,
+                started_at: new Date().toISOString(),
+                original_prompt: "Legacy task",
+                reinforcement_count: 0,
+                last_checked_at: new Date().toISOString(),
+            }, null, 2));
+            const output = runPersistentModeScript({
+                directory: tempDir,
+                sessionId: "../session-valid",
+            });
+            expect(output.continue ?? output.decision).toBeTruthy();
+        });
+        it("should NOT block for legacy autopilot state when sessionId is provided", () => {
+            const stateDir = join(tempDir, ".omc", "state");
+            mkdirSync(stateDir, { recursive: true });
+            writeFileSync(join(stateDir, "autopilot-state.json"), JSON.stringify({
+                active: true,
+                phase: "execution",
+                reinforcement_count: 0,
+                last_checked_at: new Date().toISOString(),
+            }, null, 2));
+            const output = runPersistentModeScript({
+                directory: tempDir,
+                sessionId: "any-session",
+            });
+            expect(output.continue).toBe(true);
+            expect(output.decision).toBeUndefined();
+        });
         it("should block for legacy state when no sessionId provided (backward compat)", () => {
             const stateDir = join(tempDir, ".omc", "state");
             mkdirSync(stateDir, { recursive: true });
@@ -179,9 +221,24 @@ describe("Persistent Mode Session Isolation (Issue #311)", () => {
             expect(output.decision).toBe("block");
             expect(output.reason).toContain("ULTRAWORK");
         });
+        it("should block for legacy autopilot state when no sessionId provided", () => {
+            const stateDir = join(tempDir, ".omc", "state");
+            mkdirSync(stateDir, { recursive: true });
+            writeFileSync(join(stateDir, "autopilot-state.json"), JSON.stringify({
+                active: true,
+                phase: "execution",
+                reinforcement_count: 0,
+                last_checked_at: new Date().toISOString(),
+            }, null, 2));
+            const output = runPersistentModeScript({
+                directory: tempDir,
+            });
+            expect(output.decision).toBe("block");
+            expect(output.reason).toContain("AUTOPILOT");
+        });
     });
     describe("project isolation (project_path)", () => {
-        const scriptPath = join(process.cwd(), "scripts", "persistent-mode.cjs");
+        const scriptPath = join(process.cwd(), "scripts", "persistent-mode.mjs");
         function runPersistentModeScript(input) {
             try {
                 const result = execSync(`node "${scriptPath}"`, {
@@ -261,6 +318,41 @@ describe("Persistent Mode Session Isolation (Issue #311)", () => {
             // Legacy state is invisible when sessionId is known
             expect(output.continue).toBe(true);
             expect(output.decision).toBeUndefined();
+        });
+        it("should ignore invalid sessionId when checking session-scoped state", () => {
+            const sessionId = "session-valid";
+            const sessionDir = join(tempDir, ".omc", "state", "sessions", sessionId);
+            mkdirSync(sessionDir, { recursive: true });
+            writeFileSync(join(sessionDir, "ultrawork-state.json"), JSON.stringify({
+                active: true,
+                started_at: new Date().toISOString(),
+                original_prompt: "Session task",
+                session_id: sessionId,
+                reinforcement_count: 0,
+                last_checked_at: new Date().toISOString(),
+            }, null, 2));
+            const output = runPersistentModeScript({
+                directory: tempDir,
+                sessionId: "..\\session-valid",
+            });
+            expect(output.continue).toBe(true);
+            expect(output.decision).toBeUndefined();
+        });
+        it("should not block legacy state when invalid sessionId is provided (project isolation)", () => {
+            const stateDir = join(tempDir, ".omc", "state");
+            mkdirSync(stateDir, { recursive: true });
+            writeFileSync(join(stateDir, "ultrawork-state.json"), JSON.stringify({
+                active: true,
+                started_at: new Date().toISOString(),
+                original_prompt: "Legacy local task",
+                reinforcement_count: 0,
+                last_checked_at: new Date().toISOString(),
+            }, null, 2));
+            const output = runPersistentModeScript({
+                directory: tempDir,
+                sessionId: "..\\session-valid",
+            });
+            expect(output.continue ?? output.decision).toBeTruthy();
         });
         it("should block for legacy local state when no sessionId (backward compat)", () => {
             const stateDir = join(tempDir, ".omc", "state");
