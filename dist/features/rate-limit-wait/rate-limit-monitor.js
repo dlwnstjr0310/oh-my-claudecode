@@ -21,7 +21,8 @@ export async function checkRateLimitStatus() {
         }
         const fiveHourLimited = usage.fiveHourPercent >= RATE_LIMIT_THRESHOLD;
         const weeklyLimited = usage.weeklyPercent >= RATE_LIMIT_THRESHOLD;
-        const isLimited = fiveHourLimited || weeklyLimited;
+        const monthlyLimited = (usage.monthlyPercent ?? 0) >= RATE_LIMIT_THRESHOLD;
+        const isLimited = fiveHourLimited || weeklyLimited || monthlyLimited;
         // Determine next reset time
         let nextResetAt = null;
         let timeUntilResetMs = null;
@@ -34,6 +35,9 @@ export async function checkRateLimitStatus() {
             if (weeklyLimited && usage.weeklyResetsAt) {
                 resets.push(usage.weeklyResetsAt);
             }
+            if (monthlyLimited && usage.monthlyResetsAt) {
+                resets.push(usage.monthlyResetsAt);
+            }
             if (resets.length > 0) {
                 // Find earliest reset
                 nextResetAt = resets.reduce((earliest, current) => current < earliest ? current : earliest);
@@ -43,9 +47,11 @@ export async function checkRateLimitStatus() {
         return {
             fiveHourLimited,
             weeklyLimited,
+            monthlyLimited,
             isLimited,
             fiveHourResetsAt: usage.fiveHourResetsAt ?? null,
             weeklyResetsAt: usage.weeklyResetsAt ?? null,
+            monthlyResetsAt: usage.monthlyResetsAt ?? null,
             nextResetAt,
             timeUntilResetMs,
             lastCheckedAt: new Date(),
@@ -89,6 +95,9 @@ export function formatRateLimitStatus(status) {
     }
     if (status.weeklyLimited) {
         parts.push('Weekly limit reached');
+    }
+    if (status.monthlyLimited) {
+        parts.push('Monthly limit reached');
     }
     let message = parts.join(' and ');
     if (status.timeUntilResetMs !== null) {

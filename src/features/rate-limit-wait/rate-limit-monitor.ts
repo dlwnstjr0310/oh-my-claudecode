@@ -27,7 +27,8 @@ export async function checkRateLimitStatus(): Promise<RateLimitStatus | null> {
 
     const fiveHourLimited = usage.fiveHourPercent >= RATE_LIMIT_THRESHOLD;
     const weeklyLimited = usage.weeklyPercent >= RATE_LIMIT_THRESHOLD;
-    const isLimited = fiveHourLimited || weeklyLimited;
+    const monthlyLimited = (usage.monthlyPercent ?? 0) >= RATE_LIMIT_THRESHOLD;
+    const isLimited = fiveHourLimited || weeklyLimited || monthlyLimited;
 
     // Determine next reset time
     let nextResetAt: Date | null = null;
@@ -43,6 +44,9 @@ export async function checkRateLimitStatus(): Promise<RateLimitStatus | null> {
       if (weeklyLimited && usage.weeklyResetsAt) {
         resets.push(usage.weeklyResetsAt);
       }
+      if (monthlyLimited && usage.monthlyResetsAt) {
+        resets.push(usage.monthlyResetsAt);
+      }
 
       if (resets.length > 0) {
         // Find earliest reset
@@ -56,9 +60,11 @@ export async function checkRateLimitStatus(): Promise<RateLimitStatus | null> {
     return {
       fiveHourLimited,
       weeklyLimited,
+      monthlyLimited,
       isLimited,
       fiveHourResetsAt: usage.fiveHourResetsAt ?? null,
       weeklyResetsAt: usage.weeklyResetsAt ?? null,
+      monthlyResetsAt: usage.monthlyResetsAt ?? null,
       nextResetAt,
       timeUntilResetMs,
       lastCheckedAt: new Date(),
@@ -105,6 +111,9 @@ export function formatRateLimitStatus(status: RateLimitStatus): string {
   }
   if (status.weeklyLimited) {
     parts.push('Weekly limit reached');
+  }
+  if (status.monthlyLimited) {
+    parts.push('Monthly limit reached');
   }
 
   let message = parts.join(' and ');

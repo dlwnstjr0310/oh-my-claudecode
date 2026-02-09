@@ -119,6 +119,10 @@ export interface RateLimits {
     sonnetWeeklyPercent?: number;
     /** Sonnet weekly reset time */
     sonnetWeeklyResetsAt?: Date | null;
+    /** Monthly usage percentage (0-100), if available from API */
+    monthlyPercent?: number;
+    /** When the monthly limit resets (null if unavailable) */
+    monthlyResetsAt?: Date | null;
 }
 export interface HudRenderContext {
     /** Context window percentage (0-100) */

@@ -64,14 +64,21 @@ export function renderRateLimits(limits: RateLimits | null): string | null {
   if (!limits) return null;
 
   const fiveHour = Math.min(100, Math.max(0, Math.round(limits.fiveHourPercent)));
-  const weekly = Math.min(100, Math.max(0, Math.round(limits.weeklyPercent)));
+
+  // Select second metric based on data availability
+  const useMonthly = limits.monthlyPercent != null && limits.monthlyPercent > 0;
+  const secondPercent = useMonthly ? limits.monthlyPercent! : limits.weeklyPercent;
+  const secondResetsAt = useMonthly ? limits.monthlyResetsAt : limits.weeklyResetsAt;
+  const secondLabel = useMonthly ? 'mo' : 'wk';
+
+  const weekly = Math.min(100, Math.max(0, Math.round(secondPercent)));
 
   const fiveHourColor = getColor(fiveHour);
   const weeklyColor = getColor(weekly);
 
   // Format reset times
   const fiveHourReset = formatResetTime(limits.fiveHourResetsAt);
-  const weeklyReset = formatResetTime(limits.weeklyResetsAt);
+  const weeklyReset = formatResetTime(secondResetsAt);
 
   // Build parts with optional reset times
   const fiveHourPart = fiveHourReset
@@ -79,8 +86,8 @@ export function renderRateLimits(limits: RateLimits | null): string | null {
     : `5h:${fiveHourColor}${fiveHour}%${RESET}`;
 
   const weeklyPart = weeklyReset
-    ? `${DIM}wk:${RESET}${weeklyColor}${weekly}%${RESET}${DIM}(${weeklyReset})${RESET}`
-    : `${DIM}wk:${RESET}${weeklyColor}${weekly}%${RESET}`;
+    ? `${DIM}${secondLabel}:${RESET}${weeklyColor}${weekly}%${RESET}${DIM}(${weeklyReset})${RESET}`
+    : `${DIM}${secondLabel}:${RESET}${weeklyColor}${weekly}%${RESET}`;
 
   return `${fiveHourPart} ${weeklyPart}`;
 }
@@ -94,7 +101,11 @@ export function renderRateLimitsCompact(limits: RateLimits | null): string | nul
   if (!limits) return null;
 
   const fiveHour = Math.min(100, Math.max(0, Math.round(limits.fiveHourPercent)));
-  const weekly = Math.min(100, Math.max(0, Math.round(limits.weeklyPercent)));
+
+  // Select second metric based on data availability
+  const useMonthly = limits.monthlyPercent != null && limits.monthlyPercent > 0;
+  const secondPercent = useMonthly ? limits.monthlyPercent! : limits.weeklyPercent;
+  const weekly = Math.min(100, Math.max(0, Math.round(secondPercent)));
 
   const fiveHourColor = getColor(fiveHour);
   const weeklyColor = getColor(weekly);
@@ -114,7 +125,14 @@ export function renderRateLimitsWithBar(
   if (!limits) return null;
 
   const fiveHour = Math.min(100, Math.max(0, Math.round(limits.fiveHourPercent)));
-  const weekly = Math.min(100, Math.max(0, Math.round(limits.weeklyPercent)));
+
+  // Select second metric based on data availability
+  const useMonthly = limits.monthlyPercent != null && limits.monthlyPercent > 0;
+  const secondPercent = useMonthly ? limits.monthlyPercent! : limits.weeklyPercent;
+  const secondResetsAt = useMonthly ? limits.monthlyResetsAt : limits.weeklyResetsAt;
+  const secondLabel = useMonthly ? 'mo' : 'wk';
+
+  const weekly = Math.min(100, Math.max(0, Math.round(secondPercent)));
 
   const fiveHourColor = getColor(fiveHour);
   const weeklyColor = getColor(weekly);
@@ -130,7 +148,7 @@ export function renderRateLimitsWithBar(
 
   // Format reset times
   const fiveHourReset = formatResetTime(limits.fiveHourResetsAt);
-  const weeklyReset = formatResetTime(limits.weeklyResetsAt);
+  const weeklyReset = formatResetTime(secondResetsAt);
 
   // Build parts with bars
   const fiveHourPart = fiveHourReset
@@ -138,8 +156,8 @@ export function renderRateLimitsWithBar(
     : `5h:[${fiveHourBar}]${fiveHourColor}${fiveHour}%${RESET}`;
 
   const weeklyPart = weeklyReset
-    ? `${DIM}wk:${RESET}[${weeklyBar}]${weeklyColor}${weekly}%${RESET}${DIM}(${weeklyReset})${RESET}`
-    : `${DIM}wk:${RESET}[${weeklyBar}]${weeklyColor}${weekly}%${RESET}`;
+    ? `${DIM}${secondLabel}:${RESET}[${weeklyBar}]${weeklyColor}${weekly}%${RESET}${DIM}(${weeklyReset})${RESET}`
+    : `${DIM}${secondLabel}:${RESET}[${weeklyBar}]${weeklyColor}${weekly}%${RESET}`;
 
   return `${fiveHourPart} ${weeklyPart}`;
 }

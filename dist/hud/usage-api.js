@@ -51,6 +51,12 @@ function readCache() {
             if (cache.data.weeklyResetsAt) {
                 cache.data.weeklyResetsAt = new Date(cache.data.weeklyResetsAt);
             }
+            if (cache.data.sonnetWeeklyResetsAt) {
+                cache.data.sonnetWeeklyResetsAt = new Date(cache.data.sonnetWeeklyResetsAt);
+            }
+            if (cache.data.monthlyResetsAt) {
+                cache.data.monthlyResetsAt = new Date(cache.data.monthlyResetsAt);
+            }
         }
         return cache;
     }
@@ -260,6 +266,58 @@ function fetchUsageFromApi(accessToken) {
     });
 }
 /**
+ * Fetch usage from z.ai GLM API
+ */
+function fetchUsageFromZai() {
+    return new Promise((resolve) => {
+        const baseUrl = process.env.ANTHROPIC_BASE_URL;
+        const authToken = process.env.ANTHROPIC_AUTH_TOKEN;
+        if (!baseUrl || !authToken) {
+            resolve(null);
+            return;
+        }
+        try {
+            const url = new URL(baseUrl);
+            const baseDomain = `${url.protocol}//${url.host}`;
+            const quotaLimitUrl = `${baseDomain}/api/monitor/usage/quota/limit`;
+            const urlObj = new URL(quotaLimitUrl);
+            const req = https.request({
+                hostname: urlObj.hostname,
+                path: urlObj.pathname,
+                method: 'GET',
+                headers: {
+                    'Authorization': authToken,
+                    'Content-Type': 'application/json',
+                    'Accept-Language': 'en-US,en',
+                },
+                timeout: API_TIMEOUT_MS,
+            }, (res) => {
+                let data = '';
+                res.on('data', (chunk) => { data += chunk; });
+                res.on('end', () => {
+                    if (res.statusCode === 200) {
+                        try {
+                            resolve(JSON.parse(data));
+                        }
+                        catch {
+                            resolve(null);
+                        }
+                    }
+                    else {
+                        resolve(null);
+                    }
+                });
+            });
+            req.on('error', () => resolve(null));
+            req.on('timeout', () => { req.destroy(); resolve(null); });
+            req.end();
+        }
+        catch {
+            resolve(null);
+        }
+    });
+}
+/**
  * Persist refreshed credentials back to the file-based credential store.
  * Keychain write-back is not supported (read-only for HUD).
  * Updates only the claudeAiOauth fields, preserving other data.
@@ -318,6 +376,14 @@ function writeBackCredentials(creds) {
     }
 }
 /**
+ * Clamp values to 0-100 and filter invalid
+ */
+function clamp(v) {
+    if (v == null || !isFinite(v))
+        return 0;
+    return Math.max(0, Math.min(100, v));
+}
+/**
  * Parse API response into RateLimits
  */
 function parseUsageResponse(response) {
@@ -326,12 +392,6 @@ function parseUsageResponse(response) {
     // Need at least one valid value
     if (fiveHour == null && sevenDay == null)
         return null;
-    // Clamp values to 0-100 and filter invalid
-    const clamp = (v) => {
-        if (v == null || !isFinite(v))
-            return 0;
-        return Math.max(0, Math.min(100, v));
-    };
     // Parse ISO 8601 date strings to Date objects
     const parseDate = (dateStr) => {
         if (!dateStr)
@@ -364,6 +424,38 @@ function parseUsageResponse(response) {
     return result;
 }
 /**
+ * Parse z.ai API response into RateLimits
+ */
+function parseZaiResponse(response) {
+    const limits = response.data?.limits;
+    if (!limits || limits.length === 0)
+        return null;
+    const tokensLimit = limits.find(l => l.type === 'TOKENS_LIMIT');
+    const timeLimit = limits.find(l => l.type === 'TIME_LIMIT');
+    if (!tokensLimit && !timeLimit)
+        return null;
+    // Parse nextResetTime (Unix timestamp in milliseconds) to Date
+    const parseResetTime = (timestamp) => {
+        if (!timestamp)
+            return null;
+        try {
+            const date = new Date(timestamp);
+            return isNaN(date.getTime()) ? null : date;
+        }
+        catch {
+            return null;
+        }
+    };
+    return {
+        fiveHourPercent: clamp(tokensLimit?.percentage),
+        weeklyPercent: 0,
+        fiveHourResetsAt: parseResetTime(tokensLimit?.nextResetTime),
+        weeklyResetsAt: null,
+        monthlyPercent: timeLimit ? clamp(timeLimit.percentage) : undefined,
+        monthlyResetsAt: parseResetTime(timeLimit?.nextResetTime),
+    };
+}
+/**
  * Get usage data (with caching)
  *
  * Returns null if:
@@ -372,48 +464,62 @@ function parseUsageResponse(response) {
  * - API call failed
  */
 export async function getUsage() {
-    // Check cache first
+    // Check cache first (single cache file for all sources)
     const cache = readCache();
     if (cache && isCacheValid(cache)) {
         return cache.data;
     }
-    // Get credentials
+    // Primary path: OAuth credentials (official Claude Code support)
     let creds = getCredentials();
-    if (!creds) {
-        writeCache(null, true);
-        return null;
-    }
-    // If credentials are expired, attempt token refresh
-    if (!validateCredentials(creds)) {
-        if (creds.refreshToken) {
-            const refreshed = await refreshAccessToken(creds.refreshToken);
-            if (refreshed) {
-                // Update in-memory credentials
-                creds = { ...creds, ...refreshed };
-                // Persist refreshed credentials back to store
-                writeBackCredentials(creds);
+    if (creds) {
+        // If credentials are expired, attempt token refresh
+        if (!validateCredentials(creds)) {
+            if (creds.refreshToken) {
+                const refreshed = await refreshAccessToken(creds.refreshToken);
+                if (refreshed) {
+                    // Update in-memory credentials
+                    creds = { ...creds, ...refreshed };
+                    // Persist refreshed credentials back to store
+                    writeBackCredentials(creds);
+                }
+                else {
+                    // Refresh failed - continue to fallback path
+                    creds = null;
+                }
             }
             else {
-                // Refresh failed - fall through to return null
+                // No refresh token available - continue to fallback path
+                creds = null;
+            }
+        }
+        // If we still have valid credentials, use Anthropic OAuth flow
+        if (creds) {
+            const response = await fetchUsageFromApi(creds.accessToken);
+            if (!response) {
                 writeCache(null, true);
                 return null;
             }
+            const usage = parseUsageResponse(response);
+            writeCache(usage, !usage);
+            return usage;
         }
-        else {
-            // No refresh token available
+    }
+    // Fallback path: z.ai API when explicitly using z.ai (graceful degradation)
+    // Only activate when ANTHROPIC_BASE_URL contains 'z.ai' to ensure user intent
+    const baseUrl = process.env.ANTHROPIC_BASE_URL;
+    const authToken = process.env.ANTHROPIC_AUTH_TOKEN;
+    if (baseUrl && authToken && baseUrl.includes('z.ai')) {
+        const response = await fetchUsageFromZai();
+        if (!response) {
             writeCache(null, true);
             return null;
         }
+        const usage = parseZaiResponse(response);
+        writeCache(usage, !usage);
+        return usage;
     }
-    // Fetch from API
-    const response = await fetchUsageFromApi(creds.accessToken);
-    if (!response) {
-        writeCache(null, true);
-        return null;
-    }
-    // Parse response
-    const usage = parseUsageResponse(response);
-    writeCache(usage, !usage);
-    return usage;
+    // No credentials available
+    writeCache(null, true);
+    return null;
 }
 //# sourceMappingURL=usage-api.js.map
