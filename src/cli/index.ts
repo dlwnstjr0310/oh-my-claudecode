@@ -63,17 +63,11 @@ import {
   teleportRemoveCommand
 } from './commands/teleport.js';
 
+import { getRuntimePackageVersion } from '../lib/version.js';
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-// Try to load package.json for version
-let version = '1.0.0';
-try {
-  const pkgPath = join(__dirname, '../../package.json');
-  const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'));
-  version = pkg.version;
-} catch {
-  // Use default version
-}
+const version = getRuntimePackageVersion();
 
 const program = new Command();
 
@@ -761,11 +755,13 @@ program
   .option('-c, --check', 'Only check for updates, do not install')
   .option('-f, --force', 'Force reinstall even if up to date')
   .option('-q, --quiet', 'Suppress output except for errors')
+  .option('--standalone', 'Force npm update even in plugin context')
   .addHelpText('after', `
 Examples:
   $ omc update                   Check and install updates
   $ omc update --check           Only check, don't install
-  $ omc update --force           Force reinstall`)
+  $ omc update --force           Force reinstall
+  $ omc update --standalone      Force npm update in plugin context`)
   .action(async (options) => {
     if (!options.quiet) {
       console.log(chalk.blue('Oh-My-ClaudeCode Update\n'));
@@ -811,7 +807,7 @@ Examples:
         console.log(chalk.blue('\nStarting update...\n'));
       }
 
-      const result = await performUpdate({ verbose: !options.quiet });
+      const result = await performUpdate({ verbose: !options.quiet, standalone: options.standalone });
 
       if (result.success) {
         if (!options.quiet) {

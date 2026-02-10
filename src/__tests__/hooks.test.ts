@@ -1387,8 +1387,11 @@ describe('Mutual Exclusion - UltraQA and Ralph', () => {
 
   describe('UltraQA mutual exclusion', () => {
     it('should fail to start UltraQA when Ralph is active', () => {
-      // Activate Ralph first
-      const ralphStateFile = join(testDir, '.omc', 'state', 'ralph-state.json');
+      // Activate Ralph first - write to session-scoped path since startUltraQA
+      // passes sessionId which makes readRalphState check session path only
+      const sessionDir = join(testDir, '.omc', 'state', 'sessions', 'test-session');
+      mkdirSync(sessionDir, { recursive: true });
+      const ralphStateFile = join(sessionDir, 'ralph-state.json');
       writeFileSync(ralphStateFile, JSON.stringify({ active: true }));
 
       // Try to start UltraQA
@@ -1423,8 +1426,11 @@ describe('Mutual Exclusion - UltraQA and Ralph', () => {
 
   describe('Ralph mutual exclusion', () => {
     it('should fail to start Ralph when UltraQA is active', () => {
-      // Activate UltraQA first
-      const ultraqaStateFile = join(testDir, '.omc', 'state', 'ultraqa-state.json');
+      // Activate UltraQA first - write to session-scoped path since startLoop
+      // passes sessionId which makes isUltraQAActive check session path only
+      const sessionDir = join(testDir, '.omc', 'state', 'sessions', 'test-session');
+      mkdirSync(sessionDir, { recursive: true });
+      const ultraqaStateFile = join(sessionDir, 'ultraqa-state.json');
       writeFileSync(ultraqaStateFile, JSON.stringify({ active: true }));
 
       // Try to start Ralph

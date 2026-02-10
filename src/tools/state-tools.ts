@@ -194,7 +194,8 @@ export const stateReadTool: ToolDefinition<{
         content: [{
           type: 'text' as const,
           text: `Error reading state for ${mode}: ${error instanceof Error ? error.message : String(error)}`
-        }]
+        }],
+        isError: true
       };
     }
   }
@@ -263,7 +264,8 @@ export const stateWriteTool: ToolDefinition<{
           content: [{
             type: 'text' as const,
             text: `Error: Swarm uses SQLite database (swarm.db), not JSON. Use swarm-specific APIs to modify state.`
-          }]
+          }],
+          isError: true
         };
       }
 
@@ -329,7 +331,8 @@ export const stateWriteTool: ToolDefinition<{
         content: [{
           type: 'text' as const,
           text: `Error writing state for ${mode}: ${error instanceof Error ? error.message : String(error)}`
-        }]
+        }],
+        isError: true
       };
     }
   }
@@ -481,7 +484,8 @@ export const stateClearTool: ToolDefinition<{
         content: [{
           type: 'text' as const,
           text: `Error clearing state for ${mode}: ${error instanceof Error ? error.message : String(error)}`
-        }]
+        }],
+        isError: true
       };
     }
   }
@@ -625,7 +629,8 @@ export const stateListActiveTool: ToolDefinition<{
         content: [{
           type: 'text' as const,
           text: `Error listing active modes: ${error instanceof Error ? error.message : String(error)}`
-        }]
+        }],
+        isError: true
       };
     }
   }
@@ -801,7 +806,8 @@ export const stateGetStatusTool: ToolDefinition<{
         content: [{
           type: 'text' as const,
           text: `Error getting status: ${error instanceof Error ? error.message : String(error)}`
-        }]
+        }],
+        isError: true
       };
     }
   }

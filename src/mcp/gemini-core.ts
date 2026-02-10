@@ -15,9 +15,10 @@
 import { spawn } from 'child_process';
 import { existsSync, mkdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'fs';
 import { dirname, resolve, relative, sep, isAbsolute, basename, join } from 'path';
+import { createStdoutCollector, safeWriteOutputFile } from './shared-exec.js';
 import { detectGeminiCli } from './cli-detection.js';
 import { getWorktreeRoot } from '../lib/worktree-paths.js';
-import { resolveSystemPrompt, buildPromptWithSystemContext, VALID_AGENT_ROLES } from './prompt-injection.js';
+import { resolveSystemPrompt, buildPromptWithSystemContext, wrapUntrustedFileContent, isValidAgentRoleName, VALID_AGENT_ROLES } from './prompt-injection.js';
 import { persistPrompt, persistResponse, getExpectedResponsePath } from './prompt-persistence.js';
 import { writeJobStatus, getStatusFilePath, readJobStatus } from './prompt-persistence.js';
 import type { JobStatus, BackgroundJobMeta } from './prompt-persistence.js';
@@ -56,6 +57,7 @@ export const GEMINI_TIMEOUT = Math.min(Math.max(5000, parseInt(process.env.OMC_G
 export const GEMINI_RECOMMENDED_ROLES = ['designer', 'writer', 'vision'] as const;
 
 export const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB per file
+export const MAX_STDOUT_BYTES = 10 * 1024 * 1024; // 10MB stdout cap
 
 /**
  * Check if Gemini output/stderr indicates a rate-limit (429) or quota error
@@ -103,11 +105,11 @@ export function executeGemini(prompt: string, model?: string, cwd?: string): Pro
       }
     }, GEMINI_TIMEOUT);
 
-    let stdout = '';
+    const collector = createStdoutCollector(MAX_STDOUT_BYTES);
     let stderr = '';
 
     child.stdout.on('data', (data: Buffer) => {
-      stdout += data.toString();
+      collector.append(data.toString());
     });
 
     child.stderr.on('data', (data: Buffer) => {
@@ -118,6 +120,7 @@ export function executeGemini(prompt: string, model?: string, cwd?: string): Pro
       if (!settled) {
         settled = true;
         clearTimeout(timeoutHandle);
+        const stdout = collector.toString();
         if (code === 0 || stdout.trim()) {
           // Check for retryable errors even on "successful" exit
           const retryable = isGeminiRetryableError(stdout, stderr);
@@ -214,7 +217,7 @@ export function executeGeminiBackground(
       };
       writeJobStatus(initialStatus, workingDirectory);
 
-      let stdout = '';
+      const collector = createStdoutCollector(MAX_STDOUT_BYTES);
       let stderr = '';
       let settled = false;
 
@@ -236,7 +239,9 @@ export function executeGeminiBackground(
         }
       }, GEMINI_TIMEOUT);
 
-      child.stdout?.on('data', (data: Buffer) => { stdout += data.toString(); });
+      child.stdout?.on('data', (data: Buffer) => {
+        collector.append(data.toString());
+      });
       child.stderr?.on('data', (data: Buffer) => { stderr += data.toString(); });
 
       child.stdin?.on('error', (err: Error) => {
@@ -259,6 +264,7 @@ export function executeGeminiBackground(
         settled = true;
         clearTimeout(timeoutHandle);
         spawnedPids.delete(pid);
+        const stdout = collector.toString();
 
         // Check if user killed this job
         const currentStatus = readJobStatus('gemini', jobMeta.slug, jobMeta.jobId, workingDirectory);
@@ -395,7 +401,7 @@ export function validateAndReadFile(filePath: string, baseDir?: string): string 
     if (stats.size > MAX_FILE_SIZE) {
       return `--- File: ${filePath} --- (File too large: ${(stats.size / 1024 / 1024).toFixed(1)}MB, max 5MB)`;
     }
-    return `--- File: ${filePath} ---\n${readFileSync(resolvedReal, 'utf-8')}`;
+    return wrapUntrustedFileContent(filePath, readFileSync(resolvedReal, 'utf-8'));
   } catch {
     return `--- File: ${filePath} --- (Error reading file)`;
   }
@@ -471,7 +477,7 @@ export async function handleAskGemini(args: {
   }
 
 
-  // Validate agent_role against the shared allowed agents list
+  // Validate agent_role - must be non-empty and pass character validation
   if (!agent_role || !agent_role.trim()) {
     return {
       content: [{
@@ -481,11 +487,21 @@ export async function handleAskGemini(args: {
       isError: true
     };
   }
-  if (!(VALID_AGENT_ROLES as readonly string[]).includes(agent_role)) {
+  if (!isValidAgentRoleName(agent_role)) {
     return {
       content: [{
         type: 'text' as const,
-        text: `Invalid agent_role: "${agent_role}". Must be one of: ${VALID_AGENT_ROLES.join(', ')}. Recommended for Gemini: ${GEMINI_RECOMMENDED_ROLES.join(', ')}`
+        text: `Invalid agent_role: "${agent_role}". Role names must contain only lowercase letters, numbers, and hyphens. Recommended for Gemini: ${GEMINI_RECOMMENDED_ROLES.join(', ')}`
+      }],
+      isError: true
+    };
+  }
+  // Validate agent_role exists in discovered roles (allowlist enforcement)
+  if (!VALID_AGENT_ROLES.includes(agent_role)) {
+    return {
+      content: [{
+        type: 'text' as const,
+        text: `Unknown agent_role: "${agent_role}". Available roles: ${VALID_AGENT_ROLES.join(', ')}. Recommended for Gemini: ${GEMINI_RECOMMENDED_ROLES.join(', ')}`
       }],
       isError: true
     };
@@ -698,42 +714,15 @@ ${resolvedPrompt}`;
 
       // Always write response to output_file.
       if (args.output_file && resolvedOutputPath) {
-        const outputPath = resolvedOutputPath;
-        const relOutput = relative(baseDirReal, outputPath);
-        if (relOutput === '' || relOutput.startsWith('..') || isAbsolute(relOutput)) {
-          console.warn(`[gemini-core] output_file '${args.output_file}' resolves outside working directory, skipping write.`);
-        } else {
-          try {
-            const outputDir = dirname(outputPath);
-
-            if (!existsSync(outputDir)) {
-              const relDir = relative(baseDirReal, outputDir);
-              if (relDir.startsWith('..') || isAbsolute(relDir)) {
-                console.warn(`[gemini-core] output_file directory is outside working directory, skipping write.`);
-              } else {
-                mkdirSync(outputDir, { recursive: true });
-              }
-            }
-
-            let outputDirReal: string | undefined;
-            try {
-              outputDirReal = realpathSync(outputDir);
-            } catch {
-              console.warn(`[gemini-core] Failed to resolve output directory, skipping write.`);
-            }
-
-            if (outputDirReal) {
-              const relDirReal = relative(baseDirReal, outputDirReal);
-              if (relDirReal.startsWith('..') || isAbsolute(relDirReal)) {
-                console.warn(`[gemini-core] output_file directory resolves outside working directory, skipping write.`);
-              } else {
-                const safePath = join(outputDirReal, basename(outputPath));
-                writeFileSync(safePath, response, 'utf-8');
-              }
-            }
-          } catch (err) {
-            console.warn(`[gemini-core] Failed to write output file: ${(err as Error).message}`);
-          }
+        const writeErr = await safeWriteOutputFile(args.output_file, response, baseDirReal, '[gemini-core]');
+        if (writeErr) {
+          return {
+            content: [{
+              type: 'text' as const,
+              text: `${fallbackNote}${paramLines}\n\n---\n\n${writeErr.content[0].text}`
+            }],
+            isError: true
+          };
         }
       }
 

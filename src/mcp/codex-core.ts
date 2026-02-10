@@ -11,9 +11,10 @@
 import { spawn } from 'child_process';
 import { existsSync, mkdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'fs';
 import { dirname, resolve, relative, sep, isAbsolute, basename, join } from 'path';
+import { createStdoutCollector, safeWriteOutputFile } from './shared-exec.js';
 import { detectCodexCli } from './cli-detection.js';
 import { getWorktreeRoot } from '../lib/worktree-paths.js';
-import { resolveSystemPrompt, buildPromptWithSystemContext, VALID_AGENT_ROLES } from './prompt-injection.js';
+import { resolveSystemPrompt, buildPromptWithSystemContext, wrapUntrustedFileContent, isValidAgentRoleName, VALID_AGENT_ROLES } from './prompt-injection.js';
 import { persistPrompt, persistResponse, getExpectedResponsePath } from './prompt-persistence.js';
 import { writeJobStatus, getStatusFilePath, readJobStatus } from './prompt-persistence.js';
 import type { JobStatus, BackgroundJobMeta } from './prompt-persistence.js';
@@ -55,6 +56,7 @@ export { CODEX_MODEL_FALLBACKS };
 export const CODEX_RECOMMENDED_ROLES = ['architect', 'planner', 'critic', 'analyst', 'code-reviewer', 'security-reviewer', 'tdd-guide'] as const;
 
 export const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB per file
+export const MAX_STDOUT_BYTES = 10 * 1024 * 1024; // 10MB stdout cap
 
 /**
  * Check if Codex JSONL output contains a model-not-found error
@@ -197,11 +199,11 @@ export function executeCodex(prompt: string, model: string, cwd?: string): Promi
       }
     }, CODEX_TIMEOUT);
 
-    let stdout = '';
+    const collector = createStdoutCollector(MAX_STDOUT_BYTES);
     let stderr = '';
 
     child.stdout.on('data', (data: Buffer) => {
-      stdout += data.toString();
+      collector.append(data.toString());
     });
 
     child.stderr.on('data', (data: Buffer) => {
@@ -212,6 +214,7 @@ export function executeCodex(prompt: string, model: string, cwd?: string): Promi
       if (!settled) {
         settled = true;
         clearTimeout(timeoutHandle);
+        const stdout = collector.toString();
         if (code === 0 || stdout.trim()) {
           const retryable = isRetryableError(stdout, stderr);
           if (retryable.isError) {
@@ -357,7 +360,7 @@ export function executeCodexBackground(
       };
       writeJobStatus(initialStatus, workingDirectory);
 
-      let stdout = '';
+      const collector = createStdoutCollector(MAX_STDOUT_BYTES);
       let stderr = '';
       let settled = false;
 
@@ -380,7 +383,9 @@ export function executeCodexBackground(
         }
       }, CODEX_TIMEOUT);
 
-      child.stdout?.on('data', (data: Buffer) => { stdout += data.toString(); });
+      child.stdout?.on('data', (data: Buffer) => {
+        collector.append(data.toString());
+      });
       child.stderr?.on('data', (data: Buffer) => { stderr += data.toString(); });
 
       // Update to running after stdin write
@@ -404,6 +409,7 @@ export function executeCodexBackground(
         settled = true;
         clearTimeout(timeoutHandle);
         spawnedPids.delete(pid);
+        const stdout = collector.toString();
 
         // Check if user killed this job - if so, don't overwrite the killed status
         const currentStatus = readJobStatus('codex', jobMeta.slug, jobMeta.jobId, workingDirectory);
@@ -543,7 +549,7 @@ export function validateAndReadFile(filePath: string, baseDir?: string): string 
     if (stats.size > MAX_FILE_SIZE) {
       return `--- File: ${filePath} --- (File too large: ${(stats.size / 1024 / 1024).toFixed(1)}MB, max 5MB)`;
     }
-    return `--- File: ${filePath} ---\n${readFileSync(resolvedReal, 'utf-8')}`;
+    return wrapUntrustedFileContent(filePath, readFileSync(resolvedReal, 'utf-8'));
   } catch {
     return `--- File: ${filePath} --- (Error reading file)`;
   }
@@ -615,7 +621,7 @@ export async function handleAskCodex(args: {
   }
 
 
-  // Validate agent_role against the shared allowed agents list
+  // Validate agent_role - must be non-empty and pass character validation
   if (!agent_role || !agent_role.trim()) {
     return {
       content: [{
@@ -625,11 +631,21 @@ export async function handleAskCodex(args: {
       isError: true
     };
   }
-  if (!(VALID_AGENT_ROLES as readonly string[]).includes(agent_role)) {
+  if (!isValidAgentRoleName(agent_role)) {
     return {
       content: [{
         type: 'text' as const,
-        text: `Invalid agent_role: "${agent_role}". Must be one of: ${VALID_AGENT_ROLES.join(', ')}. Recommended for Codex: ${CODEX_RECOMMENDED_ROLES.join(', ')}`
+        text: `Invalid agent_role: "${agent_role}". Role names must contain only lowercase letters, numbers, and hyphens. Recommended for Codex: ${CODEX_RECOMMENDED_ROLES.join(', ')}`
+      }],
+      isError: true
+    };
+  }
+  // Validate agent_role exists in discovered roles (allowlist enforcement)
+  if (!VALID_AGENT_ROLES.includes(agent_role)) {
+    return {
+      content: [{
+        type: 'text' as const,
+        text: `Unknown agent_role: "${agent_role}". Available roles: ${VALID_AGENT_ROLES.join(', ')}. Recommended for Codex: ${CODEX_RECOMMENDED_ROLES.join(', ')}`
       }],
       isError: true
     };
@@ -826,42 +842,15 @@ ${resolvedPrompt}`;
     // last agent message, which may be a brief acknowledgment. The JSONL-parsed
     // stdout contains ALL agent messages and is always more comprehensive.
     if (args.output_file) {
-      const outputPath = resolve(baseDirReal, args.output_file);
-      const relOutput = relative(baseDirReal, outputPath);
-      if (relOutput.startsWith('..') || isAbsolute(relOutput)) {
-        console.warn(`[codex-core] output_file '${args.output_file}' resolves outside working directory, skipping write.`);
-      } else {
-        try {
-          const outputDir = dirname(outputPath);
-
-          if (!existsSync(outputDir)) {
-            const relDir = relative(baseDirReal, outputDir);
-            if (relDir.startsWith('..') || isAbsolute(relDir)) {
-              console.warn(`[codex-core] output_file directory is outside working directory, skipping write.`);
-            } else {
-              mkdirSync(outputDir, { recursive: true });
-            }
-          }
-
-          let outputDirReal: string | undefined;
-          try {
-            outputDirReal = realpathSync(outputDir);
-          } catch {
-            console.warn(`[codex-core] Failed to resolve output directory, skipping write.`);
-          }
-
-          if (outputDirReal) {
-            const relDirReal = relative(baseDirReal, outputDirReal);
-            if (relDirReal.startsWith('..') || isAbsolute(relDirReal)) {
-              console.warn(`[codex-core] output_file directory resolves outside working directory, skipping write.`);
-            } else {
-              const safePath = join(outputDirReal, basename(outputPath));
-              writeFileSync(safePath, response, 'utf-8');
-            }
-          }
-        } catch (err) {
-          console.warn(`[codex-core] Failed to write output file: ${(err as Error).message}`);
-        }
+      const writeErr = await safeWriteOutputFile(args.output_file, response, baseDirReal, '[codex-core]');
+      if (writeErr) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: `${paramLines}\n\n---\n\n${writeErr.content[0].text}`
+          }],
+          isError: true
+        };
       }
     }
 

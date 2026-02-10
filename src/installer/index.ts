@@ -19,6 +19,7 @@ import {
   isWindows,
   MIN_NODE_VERSION
 } from './hooks.js';
+import { getRuntimePackageVersion } from '../lib/version.js';
 
 /** Claude Code configuration directory */
 export const CLAUDE_CONFIG_DIR = join(homedir(), '.claude');
@@ -38,7 +39,7 @@ export const VERSION_FILE = join(CLAUDE_CONFIG_DIR, '.omc-version.json');
 export const CORE_COMMANDS: string[] = [];
 
 /** Current version */
-export const VERSION = '4.1.6';
+export const VERSION = getRuntimePackageVersion();
 
 /**
  * Find a marker that appears at the start of a line (line-anchored).

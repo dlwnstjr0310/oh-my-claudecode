@@ -37,7 +37,9 @@ export {
 export {
   resolveSystemPrompt,
   buildPromptWithSystemContext,
-  VALID_AGENT_ROLES
+  VALID_AGENT_ROLES,
+  getValidAgentRoles,
+  isValidAgentRoleName
 } from './prompt-injection.js';
 export type { AgentRole } from './prompt-injection.js';
 
