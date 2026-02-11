@@ -11,6 +11,13 @@ import { fileURLToPath } from 'url';
 import { loadAgentPrompt } from '../agents/utils.js';
 
 /**
+ * Build-time injected agent roles list.
+ * esbuild replaces this with the actual roles array during bridge builds.
+ * In dev/test (unbundled), this remains undefined and we fall back to runtime scan.
+ */
+declare const __AGENT_ROLES__: string[] | undefined;
+
+/**
  * Get the package root directory.
  * Handles both ESM (import.meta.url) and CJS bundle (__dirname) contexts.
  * When esbuild bundles to CJS, import.meta is replaced with {} so we
@@ -54,14 +61,27 @@ export function isValidAgentRoleName(name: string): boolean {
 }
 
 /**
- * Discover valid agent roles by scanning agents/*.md files.
- * Cached after first call — agent files don't change at runtime.
+ * Discover valid agent roles.
+ * Uses build-time injected list when available (CJS bundles),
+ * falls back to runtime filesystem scan (dev/test).
+ * Cached after first call.
  */
 let _cachedRoles: string[] | null = null;
 
 export function getValidAgentRoles(): string[] {
   if (_cachedRoles) return _cachedRoles;
 
+  // Prefer build-time injected roles (always available in CJS bundles)
+  try {
+    if (typeof __AGENT_ROLES__ !== 'undefined' && Array.isArray(__AGENT_ROLES__) && __AGENT_ROLES__.length > 0) {
+      _cachedRoles = __AGENT_ROLES__;
+      return _cachedRoles;
+    }
+  } catch {
+    // __AGENT_ROLES__ not defined — fall through to runtime scan
+  }
+
+  // Runtime fallback: scan agents/ directory (dev/test environments)
   try {
     const agentsDir = join(getPackageDir(), 'agents');
     const files = readdirSync(agentsDir);
@@ -79,8 +99,8 @@ export function getValidAgentRoles(): string[] {
 }
 
 /**
- * Valid agent roles discovered dynamically from agents/*.md files.
- * This is computed at module load time for backward compatibility.
+ * Valid agent roles discovered from build-time injection or runtime scan.
+ * Computed at module load time for backward compatibility.
  */
 export const VALID_AGENT_ROLES: readonly string[] = getValidAgentRoles();
 

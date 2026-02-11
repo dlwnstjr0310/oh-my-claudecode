@@ -11,8 +11,8 @@
 export declare function isValidAgentRoleName(name: string): boolean;
 export declare function getValidAgentRoles(): string[];
 /**
- * Valid agent roles discovered dynamically from agents/*.md files.
- * This is computed at module load time for backward compatibility.
+ * Valid agent roles discovered from build-time injection or runtime scan.
+ * Computed at module load time for backward compatibility.
  */
 export declare const VALID_AGENT_ROLES: readonly string[];
 /**

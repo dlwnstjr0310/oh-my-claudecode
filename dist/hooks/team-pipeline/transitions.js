@@ -73,6 +73,8 @@ export function transitionTeamPhase(state, next, reason) {
             reason: guardFailure,
         };
     }
+    // Ralph iteration is incremented in the persistent-mode stop-event handler,
+    // not here, to avoid double-counting when team-fix triggers a ralph continuation.
     return markTeamPhase(state, next, reason);
 }
 export function requestTeamCancel(state, preserveForResume = true) {

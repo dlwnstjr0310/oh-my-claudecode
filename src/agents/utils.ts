@@ -24,6 +24,13 @@ import type {
 // ============================================================
 
 /**
+ * Build-time injected agent prompts map.
+ * esbuild replaces this with a { role: "prompt content" } object during bridge builds.
+ * In dev/test (unbundled), this remains undefined and we fall back to runtime file reads.
+ */
+declare const __AGENT_PROMPTS__: Record<string, string> | undefined;
+
+/**
  * Get the package root directory (where agents/ folder lives).
  * Handles both ESM (import.meta.url) and CJS bundle (__dirname) contexts.
  * When esbuild bundles to CJS, import.meta is replaced with {} so we
@@ -49,8 +56,17 @@ function getPackageDir(): string {
 }
 
 /**
+ * Strip YAML frontmatter from markdown content.
+ */
+function stripFrontmatter(content: string): string {
+  const match = content.match(/^---[\s\S]*?---\s*([\s\S]*)$/);
+  return match ? match[1].trim() : content.trim();
+}
+
+/**
  * Load an agent prompt from /agents/{agentName}.md
- * Strips YAML frontmatter and returns the content
+ * Uses build-time embedded prompts when available (CJS bundles),
+ * falls back to runtime file reads (dev/test environments).
  *
  * Security: Validates agent name to prevent path traversal attacks
  */
@@ -61,6 +77,17 @@ export function loadAgentPrompt(agentName: string): string {
     throw new Error(`Invalid agent name: contains disallowed characters`);
   }
 
+  // Prefer build-time embedded prompts (always available in CJS bundles)
+  try {
+    if (typeof __AGENT_PROMPTS__ !== 'undefined' && __AGENT_PROMPTS__ !== null) {
+      const prompt = __AGENT_PROMPTS__[agentName];
+      if (prompt) return prompt;
+    }
+  } catch {
+    // __AGENT_PROMPTS__ not defined — fall through to runtime file read
+  }
+
+  // Runtime fallback: read from filesystem (dev/test environments)
   try {
     const agentsDir = join(getPackageDir(), 'agents');
     const agentPath = join(agentsDir, `${agentName}.md`);
@@ -74,9 +101,7 @@ export function loadAgentPrompt(agentName: string): string {
     }
 
     const content = readFileSync(agentPath, 'utf-8');
-    // Extract content after YAML frontmatter (---\n...\n---\n)
-    const match = content.match(/^---[\s\S]*?---\s*([\s\S]*)$/);
-    return match ? match[1].trim() : content.trim();
+    return stripFrontmatter(content);
   } catch (error) {
     // Don't leak internal paths in error messages
     const message = error instanceof Error && error.message.includes('Invalid agent name')
