@@ -124,6 +124,16 @@ describe('parseRemoteUrl', () => {
     });
   });
 
+  it('should parse SSH URL with port', () => {
+    const result = parseRemoteUrl('ssh://git@gitlab.company.com:2222/group/repo.git');
+    expect(result).toEqual({
+      provider: 'gitlab',
+      host: 'gitlab.company.com',
+      owner: 'group',
+      repo: 'repo',
+    });
+  });
+
   it('strips .git suffix from repo name', () => {
     const result = parseRemoteUrl('https://github.com/user/my-repo.git');
     expect(result?.repo).toBe('my-repo');

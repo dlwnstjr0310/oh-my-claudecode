@@ -315,7 +315,9 @@ export async function teleportCommand(
 
   const { owner, repo, root: repoRoot } = currentRepo;
   const repoName = basename(repoRoot);
-  const provider = getProvider(currentRepo.provider);
+  // Use provider from parsed ref if available, otherwise fall back to current repo
+  const effectiveProviderName = parsed.provider || currentRepo.provider;
+  const provider = getProvider(effectiveProviderName);
 
   let branchName: string;
   let worktreeDirName: string;
@@ -363,7 +365,7 @@ export async function teleportCommand(
 
     if (!info) {
       const cli = provider.getRequiredCLI();
-      const error = `Could not fetch info for #${parsed.number}. ${cli ? `Make sure ${cli} CLI is installed and authenticated.` : 'Could not detect git provider.'}`;
+      const error = `Could not fetch info for #${parsed.number} from ${provider.displayName}. ${cli ? `Make sure ${cli} CLI is installed and authenticated.` : 'Check your authentication credentials and network connection.'}`;
       if (!options.json) {
         console.error(chalk.red(error));
       }
@@ -382,7 +384,7 @@ export async function teleportCommand(
         console.log(chalk.blue(`Creating PR review worktree: #${parsed.number} - ${title}`));
       }
 
-      // Fetch the PR branch using provider-specific refspec
+      // Fetch the PR branch using provider-specific refspec or head branch
       if (provider.prRefspec) {
         try {
           const refspec = provider.prRefspec
@@ -394,6 +396,17 @@ export async function teleportCommand(
           );
         } catch {
           // Branch might already exist
+        }
+      } else if (info.branch) {
+        // For providers without prRefspec (Bitbucket, Azure, Gitea),
+        // fetch the PR's head branch from origin
+        try {
+          execFileSync(
+            'git', ['fetch', 'origin', `${info.branch}:${branchName}`],
+            { cwd: repoRoot, stdio: ['pipe', 'pipe', 'pipe'], timeout: 30000 }
+          );
+        } catch {
+          // Branch might already exist locally
         }
       }
     } else {

@@ -22,9 +22,10 @@ let providerRegistry: Map<ProviderName, GitProvider> | null = null;
 export function detectProvider(remoteUrl: string): ProviderName {
   const url = remoteUrl.toLowerCase();
 
-  // Extract host portion for accurate matching
+  // Extract host portion for accurate matching (strip port if present)
   const hostMatch = url.match(/^(?:https?:\/\/|ssh:\/\/[^@]*@|[^@]+@)([^/:]+)/);
-  const host = hostMatch ? hostMatch[1].toLowerCase() : '';
+  const rawHost = hostMatch ? hostMatch[1].toLowerCase() : '';
+  const host = rawHost.replace(/:\d+$/, ''); // strip port for matching
 
   // Azure DevOps (check before generic patterns)
   if (host.includes('dev.azure.com') || host.includes('ssh.dev.azure.com') || host.endsWith('.visualstudio.com')) {
@@ -120,6 +121,20 @@ export function parseRemoteUrl(url: string): RemoteUrlInfo | null {
     };
   }
 
+  // SSH URL-style: ssh://git@host[:port]/owner/repo.git (must check before SCP-style)
+  const sshUrlMatch = trimmed.match(
+    /ssh:\/\/git@([^/:]+)(?::\d+)?\/(.+?)\/([^/\s]+?)(?:\.git)?$/
+  );
+  if (sshUrlMatch) {
+    const host = sshUrlMatch[1];
+    return {
+      provider: detectProvider(trimmed),
+      host,
+      owner: sshUrlMatch[2],
+      repo: sshUrlMatch[3],
+    };
+  }
+
   // SSH SCP-style: git@host:owner/repo.git (supports nested groups like group/subgroup/repo)
   const sshMatch = trimmed.match(
     /git@([^:]+):(.+?)\/([^/\s]+?)(?:\.git)?$/
@@ -131,20 +146,6 @@ export function parseRemoteUrl(url: string): RemoteUrlInfo | null {
       host,
       owner: sshMatch[2],
       repo: sshMatch[3],
-    };
-  }
-
-  // SSH URL-style: ssh://git@host/owner/repo.git (supports nested groups like group/subgroup/repo)
-  const sshUrlMatch = trimmed.match(
-    /ssh:\/\/git@([^/]+)\/(.+?)\/([^/\s]+?)(?:\.git)?$/
-  );
-  if (sshUrlMatch) {
-    const host = sshUrlMatch[1];
-    return {
-      provider: detectProvider(trimmed),
-      host,
-      owner: sshUrlMatch[2],
-      repo: sshUrlMatch[3],
     };
   }
 
