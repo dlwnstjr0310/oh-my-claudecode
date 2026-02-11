@@ -292,11 +292,10 @@ jq --arg mode "TEAMMATE_MODE" '. + {teammateMode: $mode}' "$SETTINGS_FILE" > "${
 
 #### 5.5.3: Configure Team Defaults
 
-Ask three questions:
+Ask two questions:
 
 1. **Default team size?** → 3 agents (Recommended) / 5 agents (maximum) / 2 agents
 2. **Default agent type?** → executor (Recommended) / build-fixer / designer
-3. **Default model?** → sonnet (Recommended) / opus / haiku
 
 Store in `~/.claude/.omc-config.json`:
 
@@ -313,9 +312,10 @@ fi
 echo "$EXISTING" | jq \
   --argjson maxAgents MAX_AGENTS \
   --arg agentType "AGENT_TYPE" \
-  --arg model "MODEL" \
-  '. + {team: {maxAgents: $maxAgents, defaultAgentType: $agentType, defaultModel: $model, monitorIntervalMs: 30000, shutdownTimeoutMs: 15000}}' > "$CONFIG_FILE"
+  '. + {team: {maxAgents: $maxAgents, defaultAgentType: $agentType, monitorIntervalMs: 30000, shutdownTimeoutMs: 15000}}' > "$CONFIG_FILE"
 ```
+
+**Note:** Teammates inherit the user's session model. No separate model default is needed.
 
 #### Verify settings.json
 
