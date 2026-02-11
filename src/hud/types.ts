@@ -162,6 +162,11 @@ export interface RateLimits {
   sonnetWeeklyPercent?: number;
   /** Sonnet weekly reset time */
   sonnetWeeklyResetsAt?: Date | null;
+
+  /** Opus-specific weekly usage percentage (0-100), if available from API */
+  opusWeeklyPercent?: number;
+  /** Opus weekly reset time */
+  opusWeeklyResetsAt?: Date | null;
 }
 
 export interface HudRenderContext {
