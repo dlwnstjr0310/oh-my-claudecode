@@ -477,6 +477,15 @@ export async function runBridge(config: BridgeConfig): Promise<void> {
   log(`[bridge] ${workerName}@${teamName} starting (${provider})`);
   audit(config, 'bridge_start');
 
+  // Emit ready status so the team lead gets an event-driven notification
+  // that this tmux session is operational and accepting tasks.
+  writeHeartbeat(workingDirectory, buildHeartbeat(config, 'polling', null, 0));
+  appendOutbox(teamName, workerName, {
+    type: 'ready',
+    message: `Worker ${workerName} is ready (${provider})`,
+    timestamp: new Date().toISOString(),
+  });
+
   while (true) {
     try {
       // --- 1. Check shutdown signal ---

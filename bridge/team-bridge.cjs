@@ -1044,6 +1044,12 @@ async function runBridge(config) {
   let activeChild = null;
   log(`[bridge] ${workerName}@${teamName} starting (${provider})`);
   audit(config, "bridge_start");
+  writeHeartbeat(workingDirectory, buildHeartbeat(config, "polling", null, 0));
+  appendOutbox(teamName, workerName, {
+    type: "ready",
+    message: `Worker ${workerName} is ready (${provider})`,
+    timestamp: (/* @__PURE__ */ new Date()).toISOString()
+  });
   while (true) {
     try {
       const shutdown = checkShutdownSignal(teamName, workerName);
