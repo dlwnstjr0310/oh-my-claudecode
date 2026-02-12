@@ -17196,6 +17196,9 @@ function isSpawnedPid2(pid) {
 }
 var CODEX_DEFAULT_MODEL = process.env.OMC_CODEX_DEFAULT_MODEL || "gpt-5.3-codex";
 var CODEX_TIMEOUT = Math.min(Math.max(5e3, parseInt(process.env.OMC_CODEX_TIMEOUT || "3600000", 10) || 36e5), 36e5);
+var RATE_LIMIT_RETRY_COUNT = Math.max(1, parseInt(process.env.OMC_CODEX_RATE_LIMIT_RETRY_COUNT || "3", 10) || 3);
+var RATE_LIMIT_INITIAL_DELAY = Math.max(1e3, parseInt(process.env.OMC_CODEX_RATE_LIMIT_INITIAL_DELAY || "5000", 10) || 5e3);
+var RATE_LIMIT_MAX_DELAY = Math.max(5e3, parseInt(process.env.OMC_CODEX_RATE_LIMIT_MAX_DELAY || "60000", 10) || 6e4);
 var MAX_FILE_SIZE2 = 5 * 1024 * 1024;
 var MAX_STDOUT_BYTES2 = 10 * 1024 * 1024;
 

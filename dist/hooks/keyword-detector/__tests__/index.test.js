@@ -85,6 +85,43 @@ World`);
             const result = sanitizeForKeywordDetection('ask codex to review');
             expect(result).toContain('ask codex');
         });
+        it('should not over-strip when XML tag names differ', () => {
+            // Mismatched tags should not strip content between them
+            const result = sanitizeForKeywordDetection('<open>ralph</close> hello');
+            expect(result).toContain('ralph');
+        });
+        it('should strip matching XML tags correctly', () => {
+            const result = sanitizeForKeywordDetection('<div>ralph</div> hello');
+            expect(result).not.toContain('ralph');
+            expect(result).toContain('hello');
+        });
+        it('should strip nested matching XML tags', () => {
+            const result = sanitizeForKeywordDetection('<outer>some <inner>text</inner> ralph</outer> visible');
+            expect(result).not.toContain('ralph');
+            expect(result).toContain('visible');
+        });
+        it('should strip absolute file paths starting with /', () => {
+            const result = sanitizeForKeywordDetection('open /usr/local/bin/codex');
+            expect(result).not.toContain('codex');
+        });
+        it('should strip relative file paths starting with ./', () => {
+            const result = sanitizeForKeywordDetection('edit ./src/codex.ts');
+            expect(result).not.toContain('codex');
+        });
+        it('should strip multi-segment file paths', () => {
+            const result = sanitizeForKeywordDetection('open src/mcp/codex-core.ts');
+            expect(result).not.toContain('codex');
+        });
+        it('should NOT strip standalone words that look like single segments', () => {
+            // "ask codex" should not be stripped since "codex" is not a path
+            const result = sanitizeForKeywordDetection('ask codex to review');
+            expect(result).toContain('ask codex');
+        });
+        it('should NOT strip slash-less words with dots', () => {
+            // "file.txt" alone (no path separator) should be kept
+            const result = sanitizeForKeywordDetection('rename codex.config');
+            expect(result).toContain('codex');
+        });
     });
     describe('extractPromptText', () => {
         it('should extract text from text parts', () => {
@@ -645,11 +682,17 @@ World`);
         it('should return ecomode over ultrawork when both present', () => {
             expect(getAllKeywords('ulw eco fix errors')).toEqual(['ecomode']);
         });
-        it('should return team over autopilot when legacy ultrapilot trigger is present', () => {
-            expect(getAllKeywords('autopilot ultrapilot build')).toEqual(['team']);
+        it('should return team and ultrapilot when legacy ultrapilot trigger is present', () => {
+            const result = getAllKeywords('autopilot ultrapilot build');
+            expect(result).toContain('ultrapilot');
+            expect(result).toContain('team');
+            // team beats autopilot, but original ultrapilot is preserved
+            expect(result).not.toContain('autopilot');
         });
-        it('should return team for legacy swarm trigger', () => {
-            expect(getAllKeywords('swarm 5 agents build this')).toEqual(['team']);
+        it('should return team and swarm for legacy swarm trigger', () => {
+            const result = getAllKeywords('swarm 5 agents build this');
+            expect(result).toContain('swarm');
+            expect(result).toContain('team');
         });
         it('should return ralph with ultrawork (not mutually exclusive)', () => {
             const result = getAllKeywords('ralph ultrawork fix');
@@ -740,13 +783,15 @@ World`);
             const result = getAllKeywords('coordinated team build the API');
             expect(result).toContain('team');
         });
-        it('should detect team via ultrapilot legacy keyword', () => {
+        it('should detect team via ultrapilot legacy keyword and preserve ultrapilot', () => {
             const result = getAllKeywords('ultrapilot build all components');
             expect(result).toContain('team');
+            expect(result).toContain('ultrapilot');
         });
-        it('should detect team via swarm N agents pattern', () => {
+        it('should detect team via swarm N agents pattern and preserve swarm', () => {
             const result = getAllKeywords('swarm 5 agents fix all errors');
             expect(result).toContain('team');
+            expect(result).toContain('swarm');
         });
         // Mixed keyword precedence tests
         it('should handle team + ecomode + ralph combination', () => {
@@ -781,13 +826,15 @@ World`);
                 const result = getAllKeywords('coordinated team build');
                 expect(result).not.toContain('team');
             });
-            it('should NOT detect ultrapilot as team when disabled', () => {
+            it('should NOT detect ultrapilot or team when disabled', () => {
                 const result = getAllKeywords('ultrapilot build all');
                 expect(result).not.toContain('team');
+                expect(result).not.toContain('ultrapilot');
             });
-            it('should NOT detect swarm as team when disabled', () => {
+            it('should NOT detect swarm or team when disabled', () => {
                 const result = getAllKeywords('swarm 5 agents fix errors');
                 expect(result).not.toContain('team');
+                expect(result).not.toContain('swarm');
             });
             it('should still detect other keywords when team disabled', () => {
                 const result = getAllKeywords('team ralph build the API');

@@ -1044,6 +1044,12 @@ async function runBridge(config) {
   let activeChild = null;
   log(`[bridge] ${workerName}@${teamName} starting (${provider})`);
   audit(config, "bridge_start");
+  try {
+    writeHeartbeat(workingDirectory, buildHeartbeat(config, "polling", null, 0));
+  } catch (err) {
+    audit(config, "bridge_start", void 0, { warning: "startup_write_failed", error: String(err) });
+  }
+  let readyEmitted = false;
   while (true) {
     try {
       const shutdown = checkShutdownSignal(teamName, workerName);
@@ -1080,6 +1086,18 @@ async function runBridge(config) {
         continue;
       }
       writeHeartbeat(workingDirectory, buildHeartbeat(config, "polling", null, consecutiveErrors));
+      if (!readyEmitted) {
+        try {
+          appendOutbox(teamName, workerName, {
+            type: "ready",
+            message: `Worker ${workerName} is ready (${provider})`,
+            timestamp: (/* @__PURE__ */ new Date()).toISOString()
+          });
+          readyEmitted = true;
+        } catch (err) {
+          audit(config, "bridge_start", void 0, { warning: "startup_write_failed", error: String(err) });
+        }
+      }
       const messages = readNewInboxMessages(teamName, workerName);
       const task = await findNextTask(teamName, workerName);
       if (task) {

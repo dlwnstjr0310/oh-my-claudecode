@@ -46,7 +46,7 @@ function syncMarketplaceClone(verbose: boolean = false): { ok: boolean; message:
   }
 
   // Ensure we're on main (ignore errors for older clones on different branches)
-  try { execSync(`git -C "${marketplacePath}" checkout main`, { ...execOpts, timeout: 15000 }); } catch {}
+  try { execSync(`git -C "${marketplacePath}" checkout main`, { ...execOpts, timeout: 15000 }); } catch { /* ignore checkout errors on older clones */ }
 
   try {
     execSync(`git -C "${marketplacePath}" pull --ff-only origin main`, execOpts);

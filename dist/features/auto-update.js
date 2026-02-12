@@ -42,7 +42,7 @@ function syncMarketplaceClone(verbose = false) {
     try {
         execSync(`git -C "${marketplacePath}" checkout main`, { ...execOpts, timeout: 15000 });
     }
-    catch { }
+    catch { /* ignore checkout errors on older clones */ }
     try {
         execSync(`git -C "${marketplacePath}" pull --ff-only origin main`, execOpts);
     }

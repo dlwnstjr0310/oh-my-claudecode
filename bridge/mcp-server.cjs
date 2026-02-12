@@ -17947,7 +17947,10 @@ Install with: ${this.serverConfig.installHint}`
     return new Promise((resolve5, reject) => {
       this.process = (0, import_child_process2.spawn)(this.serverConfig.command, this.serverConfig.args, {
         cwd: this.workspaceRoot,
-        stdio: ["pipe", "pipe", "pipe"]
+        stdio: ["pipe", "pipe", "pipe"],
+        // On Windows, npm-installed binaries are .cmd scripts that require
+        // shell execution. Without this, spawn() fails with ENOENT. (#569)
+        shell: process.platform === "win32"
       });
       this.process.stdout?.on("data", (data) => {
         this.handleData(data.toString());

@@ -18,7 +18,8 @@ export interface DetectedKeyword {
  */
 export declare function removeCodeBlocks(text: string): string;
 /**
- * Sanitize text before keyword detection to reduce false positives
+ * Sanitize text for keyword detection by removing structural noise.
+ * Strips XML tags, URLs, file paths, and code blocks.
  */
 export declare function sanitizeForKeywordDetection(text: string): string;
 /**

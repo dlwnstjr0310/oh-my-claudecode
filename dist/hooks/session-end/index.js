@@ -48,35 +48,62 @@ function getModesUsed(directory) {
     return modes;
 }
 /**
- * Get session start time from state files
+ * Get session start time from state files.
+ *
+ * When sessionId is provided, only state files whose session_id matches are
+ * considered.  State files that carry a *different* session_id are treated as
+ * stale leftovers and skipped — this is the fix for issue #573 where stale
+ * state files caused grossly overreported session durations.
+ *
+ * Legacy state files (no session_id field) are used as a fallback so that
+ * older state formats still work.
+ *
+ * When multiple files match, the earliest started_at is returned so that
+ * duration reflects the full session span (e.g. autopilot started before
+ * ultrawork).
  */
-function getSessionStartTime(directory) {
+export function getSessionStartTime(directory, sessionId) {
     const stateDir = path.join(directory, '.omc', 'state');
     if (!fs.existsSync(stateDir)) {
         return undefined;
     }
     const stateFiles = fs.readdirSync(stateDir).filter(f => f.endsWith('.json'));
+    let matchedStartTime;
+    let legacyStartTime;
     for (const file of stateFiles) {
         try {
             const statePath = path.join(stateDir, file);
             const content = fs.readFileSync(statePath, 'utf-8');
             const state = JSON.parse(content);
-            if (state.started_at) {
-                return state.started_at;
+            if (!state.started_at) {
+                continue;
             }
+            if (sessionId && state.session_id === sessionId) {
+                // State belongs to the current session — prefer earliest
+                if (!matchedStartTime || state.started_at < matchedStartTime) {
+                    matchedStartTime = state.started_at;
+                }
+            }
+            else if (!state.session_id) {
+                // Legacy state without session_id — fallback only
+                if (!legacyStartTime || state.started_at < legacyStartTime) {
+                    legacyStartTime = state.started_at;
+                }
+            }
+            // else: state has a different session_id — stale, skip
         }
         catch (error) {
             continue;
         }
     }
-    return undefined;
+    return matchedStartTime ?? legacyStartTime;
 }
 /**
  * Record session metrics
  */
 export function recordSessionMetrics(directory, input) {
     const endedAt = new Date().toISOString();
-    const startedAt = getSessionStartTime(directory);
+    const startedAt = getSessionStartTime(directory, input.session_id);
     const { spawned, completed } = getAgentCounts(directory);
     const modesUsed = getModesUsed(directory);
     const metrics = {

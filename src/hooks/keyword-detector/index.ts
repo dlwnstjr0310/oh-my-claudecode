@@ -107,20 +107,20 @@ export function removeCodeBlocks(text: string): string {
 }
 
 /**
- * Sanitize text before keyword detection to reduce false positives
+ * Sanitize text for keyword detection by removing structural noise.
+ * Strips XML tags, URLs, file paths, and code blocks.
  */
 export function sanitizeForKeywordDetection(text: string): string {
-  let result = removeCodeBlocks(text);
-
-  // Remove XML-like tags and tag blocks
-  result = result.replace(/<[^>]+>/g, ' ');
-
+  // Remove XML tag blocks (opening + content + closing; tag names must match)
+  let result = text.replace(/<(\w[\w-]*)[\s>][\s\S]*?<\/\1>/g, '');
+  // Remove self-closing XML tags
+  result = result.replace(/<\w[\w-]*(?:\s[^>]*)?\s*\/>/g, '');
   // Remove URLs
-  result = result.replace(/https?:\/\/\S+/gi, ' ');
-
-  // Remove path-like tokens
-  result = result.replace(/(?:^|\s)(?:\.?\.?\/)?(?:[\w.-]+\/)+[\w.-]+/g, ' ');
-
+  result = result.replace(/https?:\/\/\S+/g, '');
+  // Remove file paths — requires leading / or ./ or multi-segment dir/file.ext
+  result = result.replace(/(^|[\s"'`(])(?:\.?\/(?:[\w.-]+\/)*[\w.-]+|(?:[\w.-]+\/)+[\w.-]+\.\w+)/gm, '$1');
+  // Remove code blocks (fenced and inline)
+  result = removeCodeBlocks(result);
   return result;
 }
 
@@ -144,7 +144,7 @@ export function detectKeywordsWithType(
   _agentName?: string
 ): DetectedKeyword[] {
   const detected: DetectedKeyword[] = [];
-  const cleanedText = removeCodeBlocks(text);
+  const cleanedText = sanitizeForKeywordDetection(text);
 
   // Check autopilot phrases first (more specific than keywords)
   for (const pattern of AUTOPILOT_PHRASE_PATTERNS) {
@@ -176,6 +176,11 @@ export function detectKeywordsWithType(
 
   // Check each keyword type
   for (const type of KEYWORD_PRIORITY) {
+    // Skip team-related types when team feature is disabled
+    if ((type === 'team' || type === 'ultrapilot' || type === 'swarm') && !isTeamEnabled()) {
+      continue;
+    }
+
     // Skip ecomode detection if disabled in config
     if (type === 'ecomode' && !isEcomodeEnabled()) {
       continue;
@@ -190,6 +195,15 @@ export function detectKeywordsWithType(
         keyword: match[0],
         position: match.index
       });
+
+      // Legacy ultrapilot/swarm also activate team mode internally
+      if (type === 'ultrapilot' || type === 'swarm') {
+        detected.push({
+          type: 'team',
+          keyword: match[0],
+          position: match.index
+        });
+      }
     }
   }
 
@@ -200,16 +214,14 @@ export function detectKeywordsWithType(
  * Check if text contains any magic keyword
  */
 export function hasKeyword(text: string): boolean {
-  const cleanText = removeCodeBlocks(text);
-  return detectKeywordsWithType(cleanText).length > 0;
+  return detectKeywordsWithType(text).length > 0;
 }
 
 /**
  * Get all detected keywords with conflict resolution applied
  */
 export function getAllKeywords(text: string): KeywordType[] {
-  const cleanText = removeCodeBlocks(text);
-  const detected = detectKeywordsWithType(cleanText);
+  const detected = detectKeywordsWithType(text);
 
   if (detected.length === 0) return [];
 
@@ -223,15 +235,9 @@ export function getAllKeywords(text: string): KeywordType[] {
     types = types.filter(t => t !== 'ultrawork');
   }
 
-  // Mutual exclusion: ultrapilot beats autopilot
-  if (types.includes('ultrapilot') && types.includes('autopilot')) {
+  // Mutual exclusion: team beats autopilot (ultrapilot/swarm now map to team at detection)
+  if (types.includes('team') && types.includes('autopilot')) {
     types = types.filter(t => t !== 'autopilot');
-  }
-
-  // Team is an alias for swarm - map team to swarm for processing
-  // But keep team as distinct for UI purposes
-  if (types.includes('team') && !types.includes('swarm')) {
-    types.push('swarm');
   }
 
   // Sort by priority order
@@ -252,8 +258,7 @@ export function getPrimaryKeyword(text: string): DetectedKeyword | null {
   const primaryType = allKeywords[0];
 
   // Find the original detected keyword for this type
-  const cleanText = removeCodeBlocks(text);
-  const detected = detectKeywordsWithType(cleanText);
+  const detected = detectKeywordsWithType(text);
   const match = detected.find(d => d.type === primaryType);
 
   return match || null;

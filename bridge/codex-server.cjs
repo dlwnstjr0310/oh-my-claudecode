@@ -16774,9 +16774,21 @@ function validateModelName(model) {
 }
 var CODEX_DEFAULT_MODEL = process.env.OMC_CODEX_DEFAULT_MODEL || "gpt-5.3-codex";
 var CODEX_TIMEOUT = Math.min(Math.max(5e3, parseInt(process.env.OMC_CODEX_TIMEOUT || "3600000", 10) || 36e5), 36e5);
+var RATE_LIMIT_RETRY_COUNT = Math.max(1, parseInt(process.env.OMC_CODEX_RATE_LIMIT_RETRY_COUNT || "3", 10) || 3);
+var RATE_LIMIT_INITIAL_DELAY = Math.max(1e3, parseInt(process.env.OMC_CODEX_RATE_LIMIT_INITIAL_DELAY || "5000", 10) || 5e3);
+var RATE_LIMIT_MAX_DELAY = Math.max(5e3, parseInt(process.env.OMC_CODEX_RATE_LIMIT_MAX_DELAY || "60000", 10) || 6e4);
 var CODEX_RECOMMENDED_ROLES = ["architect", "planner", "critic", "analyst", "code-reviewer", "security-reviewer", "tdd-guide"];
 var MAX_FILE_SIZE = 5 * 1024 * 1024;
 var MAX_STDOUT_BYTES = 10 * 1024 * 1024;
+function computeBackoffDelay(attempt, initialDelay = RATE_LIMIT_INITIAL_DELAY, maxDelay = RATE_LIMIT_MAX_DELAY) {
+  const exponential = initialDelay * Math.pow(2, attempt);
+  const capped = Math.min(exponential, maxDelay);
+  const jitter = capped * (0.5 + Math.random() * 0.5);
+  return Math.round(jitter);
+}
+function sleep(ms) {
+  return new Promise((resolve7) => setTimeout(resolve7, ms));
+}
 function isModelError(output) {
   const lines = output.trim().split("\n").filter((l) => l.trim());
   for (const line of lines) {
@@ -16926,19 +16938,37 @@ function executeCodex(prompt, model, cwd) {
     child.stdin.end();
   });
 }
-async function executeCodexWithFallback(prompt, model, cwd, fallbackChain) {
+async function executeCodexWithFallback(prompt, model, cwd, fallbackChain, overrides) {
+  const exec = overrides?.executor ?? executeCodex;
+  const sleepFn = overrides?.sleepFn ?? sleep;
   const modelExplicit = model !== void 0 && model !== null && model !== "";
   const effectiveModel = model || CODEX_DEFAULT_MODEL;
   if (modelExplicit) {
-    const response = await executeCodex(prompt, effectiveModel, cwd);
-    return { response, usedFallback: false, actualModel: effectiveModel };
+    let lastError2 = null;
+    for (let attempt = 0; attempt <= RATE_LIMIT_RETRY_COUNT; attempt++) {
+      try {
+        const response = await exec(prompt, effectiveModel, cwd);
+        return { response, usedFallback: false, actualModel: effectiveModel };
+      } catch (err) {
+        lastError2 = err;
+        if (!/429|rate.?limit|too many requests|quota.?exceeded|resource.?exhausted/i.test(lastError2.message)) {
+          throw lastError2;
+        }
+        if (attempt < RATE_LIMIT_RETRY_COUNT) {
+          const delay = computeBackoffDelay(attempt, RATE_LIMIT_INITIAL_DELAY, RATE_LIMIT_MAX_DELAY);
+          await sleepFn(delay);
+        }
+      }
+    }
+    throw lastError2 || new Error("Codex rate limit: all retries exhausted");
   }
   const chain = fallbackChain || CODEX_MODEL_FALLBACKS;
   const modelsToTry = chain.includes(effectiveModel) ? chain.slice(chain.indexOf(effectiveModel)) : [effectiveModel, ...chain];
   let lastError = null;
+  let rateLimitAttempt = 0;
   for (const tryModel of modelsToTry) {
     try {
-      const response = await executeCodex(prompt, tryModel, cwd);
+      const response = await exec(prompt, tryModel, cwd);
       return {
         response,
         usedFallback: tryModel !== effectiveModel,
@@ -16949,6 +16979,11 @@ async function executeCodexWithFallback(prompt, model, cwd, fallbackChain) {
       if (!/model error|model_not_found|model is not supported|429|rate.?limit|too many requests|quota.?exceeded|resource.?exhausted/i.test(lastError.message)) {
         throw lastError;
       }
+      if (/429|rate.?limit|too many requests|quota.?exceeded|resource.?exhausted/i.test(lastError.message)) {
+        const delay = computeBackoffDelay(rateLimitAttempt, RATE_LIMIT_INITIAL_DELAY, RATE_LIMIT_MAX_DELAY);
+        await sleepFn(delay);
+        rateLimitAttempt++;
+      }
     }
   }
   throw lastError || new Error("All Codex models in fallback chain failed");
@@ -16958,7 +16993,7 @@ function executeCodexBackground(fullPrompt, modelInput, jobMeta, workingDirector
     const modelExplicit = modelInput !== void 0 && modelInput !== null && modelInput !== "";
     const effectiveModel = modelInput || CODEX_DEFAULT_MODEL;
     const modelsToTry = modelExplicit ? [effectiveModel] : CODEX_MODEL_FALLBACKS.includes(effectiveModel) ? CODEX_MODEL_FALLBACKS.slice(CODEX_MODEL_FALLBACKS.indexOf(effectiveModel)) : [effectiveModel, ...CODEX_MODEL_FALLBACKS];
-    const trySpawnWithModel = (tryModel, remainingModels) => {
+    const trySpawnWithModel = (tryModel, remainingModels, rateLimitAttempt = 0) => {
       validateModelName(tryModel);
       const args = ["exec", "-m", tryModel, "--json", "--full-auto"];
       const child = (0, import_child_process3.spawn)("codex", args, {
@@ -17040,21 +17075,52 @@ function executeCodexBackground(fullPrompt, modelInput, jobMeta, workingDirector
         }
         if (code === 0 || stdout.trim()) {
           const retryableErr = isRetryableError(stdout, stderr);
-          if (retryableErr.isError && remainingModels.length > 0) {
-            const nextModel = remainingModels[0];
-            const newRemainingModels = remainingModels.slice(1);
-            const retryResult = trySpawnWithModel(nextModel, newRemainingModels);
-            if ("error" in retryResult) {
-              writeJobStatus({
-                ...initialStatus,
-                status: "failed",
-                completedAt: (/* @__PURE__ */ new Date()).toISOString(),
-                error: `Fallback spawn failed for model ${nextModel}: ${retryResult.error}`
-              }, workingDirectory);
-            }
-            return;
-          }
           if (retryableErr.isError) {
+            const isRateLimit = retryableErr.type === "rate_limit";
+            if (isRateLimit && modelExplicit && rateLimitAttempt < RATE_LIMIT_RETRY_COUNT) {
+              const delay = computeBackoffDelay(rateLimitAttempt, RATE_LIMIT_INITIAL_DELAY, RATE_LIMIT_MAX_DELAY);
+              setTimeout(() => {
+                const retryResult = trySpawnWithModel(tryModel, remainingModels, rateLimitAttempt + 1);
+                if ("error" in retryResult) {
+                  writeJobStatus({
+                    ...initialStatus,
+                    status: "failed",
+                    completedAt: (/* @__PURE__ */ new Date()).toISOString(),
+                    error: `Rate limit retry failed for model ${tryModel}: ${retryResult.error}`
+                  }, workingDirectory);
+                }
+              }, delay);
+              return;
+            }
+            if (remainingModels.length > 0) {
+              const nextModel = remainingModels[0];
+              const newRemainingModels = remainingModels.slice(1);
+              if (isRateLimit) {
+                const delay = computeBackoffDelay(rateLimitAttempt, RATE_LIMIT_INITIAL_DELAY, RATE_LIMIT_MAX_DELAY);
+                setTimeout(() => {
+                  const retryResult = trySpawnWithModel(nextModel, newRemainingModels, rateLimitAttempt + 1);
+                  if ("error" in retryResult) {
+                    writeJobStatus({
+                      ...initialStatus,
+                      status: "failed",
+                      completedAt: (/* @__PURE__ */ new Date()).toISOString(),
+                      error: `Fallback spawn failed for model ${nextModel}: ${retryResult.error}`
+                    }, workingDirectory);
+                  }
+                }, delay);
+              } else {
+                const retryResult = trySpawnWithModel(nextModel, newRemainingModels, rateLimitAttempt);
+                if ("error" in retryResult) {
+                  writeJobStatus({
+                    ...initialStatus,
+                    status: "failed",
+                    completedAt: (/* @__PURE__ */ new Date()).toISOString(),
+                    error: `Fallback spawn failed for model ${nextModel}: ${retryResult.error}`
+                  }, workingDirectory);
+                }
+              }
+              return;
+            }
             writeJobStatus({
               ...initialStatus,
               status: "failed",
@@ -17086,19 +17152,52 @@ function executeCodexBackground(fullPrompt, modelInput, jobMeta, workingDirector
           }, workingDirectory);
         } else {
           const retryableExit = isRetryableError(stderr, stdout);
-          if (retryableExit.isError && remainingModels.length > 0) {
-            const nextModel = remainingModels[0];
-            const newRemainingModels = remainingModels.slice(1);
-            const retryResult = trySpawnWithModel(nextModel, newRemainingModels);
-            if ("error" in retryResult) {
-              writeJobStatus({
-                ...initialStatus,
-                status: "failed",
-                completedAt: (/* @__PURE__ */ new Date()).toISOString(),
-                error: `Fallback spawn failed for model ${nextModel}: ${retryResult.error}`
-              }, workingDirectory);
+          if (retryableExit.isError) {
+            const isRateLimit = retryableExit.type === "rate_limit";
+            if (isRateLimit && modelExplicit && rateLimitAttempt < RATE_LIMIT_RETRY_COUNT) {
+              const delay = computeBackoffDelay(rateLimitAttempt, RATE_LIMIT_INITIAL_DELAY, RATE_LIMIT_MAX_DELAY);
+              setTimeout(() => {
+                const retryResult = trySpawnWithModel(tryModel, remainingModels, rateLimitAttempt + 1);
+                if ("error" in retryResult) {
+                  writeJobStatus({
+                    ...initialStatus,
+                    status: "failed",
+                    completedAt: (/* @__PURE__ */ new Date()).toISOString(),
+                    error: `Rate limit retry failed for model ${tryModel}: ${retryResult.error}`
+                  }, workingDirectory);
+                }
+              }, delay);
+              return;
             }
-            return;
+            if (remainingModels.length > 0) {
+              const nextModel = remainingModels[0];
+              const newRemainingModels = remainingModels.slice(1);
+              if (isRateLimit) {
+                const delay = computeBackoffDelay(rateLimitAttempt, RATE_LIMIT_INITIAL_DELAY, RATE_LIMIT_MAX_DELAY);
+                setTimeout(() => {
+                  const retryResult = trySpawnWithModel(nextModel, newRemainingModels, rateLimitAttempt + 1);
+                  if ("error" in retryResult) {
+                    writeJobStatus({
+                      ...initialStatus,
+                      status: "failed",
+                      completedAt: (/* @__PURE__ */ new Date()).toISOString(),
+                      error: `Fallback spawn failed for model ${nextModel}: ${retryResult.error}`
+                    }, workingDirectory);
+                  }
+                }, delay);
+              } else {
+                const retryResult = trySpawnWithModel(nextModel, newRemainingModels, rateLimitAttempt);
+                if ("error" in retryResult) {
+                  writeJobStatus({
+                    ...initialStatus,
+                    status: "failed",
+                    completedAt: (/* @__PURE__ */ new Date()).toISOString(),
+                    error: `Fallback spawn failed for model ${nextModel}: ${retryResult.error}`
+                  }, workingDirectory);
+                }
+              }
+              return;
+            }
           }
           writeJobStatus({
             ...initialStatus,

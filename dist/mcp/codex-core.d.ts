@@ -13,10 +13,22 @@ export declare function isSpawnedPid(pid: number): boolean;
 export declare function clearSpawnedPids(): void;
 export declare const CODEX_DEFAULT_MODEL: string;
 export declare const CODEX_TIMEOUT: number;
+export declare const RATE_LIMIT_RETRY_COUNT: number;
+export declare const RATE_LIMIT_INITIAL_DELAY: number;
+export declare const RATE_LIMIT_MAX_DELAY: number;
 export { CODEX_MODEL_FALLBACKS };
 export declare const CODEX_RECOMMENDED_ROLES: readonly ["architect", "planner", "critic", "analyst", "code-reviewer", "security-reviewer", "tdd-guide"];
 export declare const MAX_FILE_SIZE: number;
 export declare const MAX_STDOUT_BYTES: number;
+/**
+ * Compute exponential backoff delay with jitter for rate limit retries.
+ * Returns delay in ms: min(initialDelay * 2^attempt, maxDelay) * random(0.5, 1.0)
+ */
+export declare function computeBackoffDelay(attempt: number, initialDelay?: number, maxDelay?: number): number;
+/**
+ * Sleep for the specified duration. Exported for test mockability.
+ */
+export declare function sleep(ms: number): Promise<void>;
 /**
  * Check if Codex JSONL output contains a model-not-found error
  */
@@ -57,10 +69,16 @@ export declare function parseCodexOutput(output: string): string;
  */
 export declare function executeCodex(prompt: string, model: string, cwd?: string): Promise<string>;
 /**
- * Execute Codex CLI with model fallback chain
- * Only falls back on model_not_found errors when model was not explicitly provided
+ * Execute Codex CLI with model fallback chain and exponential backoff on rate limits.
+ * Falls back on model_not_found or rate limit errors when model was not explicitly provided.
+ * When model IS explicit, retries the same model with backoff on rate limit.
  */
-export declare function executeCodexWithFallback(prompt: string, model: string | undefined, cwd?: string, fallbackChain?: string[]): Promise<{
+export declare function executeCodexWithFallback(prompt: string, model: string | undefined, cwd?: string, fallbackChain?: string[], 
+/** @internal Testing overrides */
+overrides?: {
+    executor?: typeof executeCodex;
+    sleepFn?: typeof sleep;
+}): Promise<{
     response: string;
     usedFallback: boolean;
     actualModel: string;

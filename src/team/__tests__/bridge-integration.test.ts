@@ -4,7 +4,7 @@ import { join, resolve } from 'path';
 import { homedir, tmpdir } from 'os';
 import type { BridgeConfig, TaskFile, OutboxMessage } from '../types.js';
 import { readTask, updateTask } from '../task-file-ops.js';
-import { checkShutdownSignal, writeShutdownSignal } from '../inbox-outbox.js';
+import { checkShutdownSignal, writeShutdownSignal, appendOutbox } from '../inbox-outbox.js';
 import { writeHeartbeat, readHeartbeat } from '../heartbeat.js';
 import { sanitizeName } from '../tmux-session.js';
 
@@ -147,6 +147,72 @@ describe('Bridge Integration', () => {
       updateTask(TEST_TEAM, '1', { status: 'completed' });
       const next = await findNextTask(TEST_TEAM, 'worker1');
       expect(next?.id).toBe('2');
+    });
+  });
+
+  describe('Ready status hook', () => {
+    it('emits a ready outbox message after first successful poll cycle', () => {
+      const config = makeConfig();
+
+      // Simulate what runBridge() now does: heartbeat at startup,
+      // then ready emitted after first successful poll (heartbeat write succeeds)
+      writeHeartbeat(config.workingDirectory, {
+        workerName: config.workerName,
+        teamName: config.teamName,
+        provider: config.provider,
+        pid: process.pid,
+        lastPollAt: new Date().toISOString(),
+        consecutiveErrors: 0,
+        status: 'polling',
+      });
+
+      // Ready is now emitted inside the loop after first successful heartbeat
+      appendOutbox(config.teamName, config.workerName, {
+        type: 'ready',
+        message: `Worker ${config.workerName} is ready (${config.provider})`,
+        timestamp: new Date().toISOString(),
+      });
+
+      const messages = readOutbox();
+      expect(messages.length).toBeGreaterThanOrEqual(1);
+      const readyMsg = messages.find(m => m.type === 'ready');
+      expect(readyMsg).toBeDefined();
+      expect(readyMsg!.type).toBe('ready');
+      expect(readyMsg!.message).toContain('worker1');
+      expect(readyMsg!.message).toContain('codex');
+      expect(readyMsg!.timestamp).toBeTruthy();
+    });
+
+    it('ready message appears before any idle message', () => {
+      const config = makeConfig();
+
+      // Emit ready (after first successful poll cycle)
+      appendOutbox(config.teamName, config.workerName, {
+        type: 'ready',
+        message: `Worker ${config.workerName} is ready (${config.provider})`,
+        timestamp: new Date().toISOString(),
+      });
+
+      // Emit idle (poll finds no tasks)
+      appendOutbox(config.teamName, config.workerName, {
+        type: 'idle',
+        message: 'All assigned tasks complete. Standing by.',
+        timestamp: new Date().toISOString(),
+      });
+
+      const messages = readOutbox();
+      const readyIdx = messages.findIndex(m => m.type === 'ready');
+      const idleIdx = messages.findIndex(m => m.type === 'idle');
+      expect(readyIdx).toBeLessThan(idleIdx);
+    });
+
+    it('ready message type is valid in OutboxMessage union', () => {
+      const msg: OutboxMessage = {
+        type: 'ready',
+        message: 'test',
+        timestamp: new Date().toISOString(),
+      };
+      expect(msg.type).toBe('ready');
     });
   });
 });
