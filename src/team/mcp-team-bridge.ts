@@ -472,6 +472,7 @@ export async function runBridge(config: BridgeConfig): Promise<void> {
   let consecutiveErrors = 0;
   let idleNotified = false;
   let quarantineNotified = false;
+  let readyEmitted = false;
   let activeChild: ChildProcess | null = null;
 
   log(`[bridge] ${workerName}@${teamName} starting (${provider})`);
@@ -527,14 +528,34 @@ export async function runBridge(config: BridgeConfig): Promise<void> {
         continue;
       }
 
-      // --- 3. Write heartbeat ---
-      writeHeartbeat(workingDirectory, buildHeartbeat(config, 'polling', null, consecutiveErrors));
+      // --- 3. Write heartbeat (protected so failure doesn't prevent polling) ---
+      try {
+        writeHeartbeat(workingDirectory, buildHeartbeat(config, 'polling', null, consecutiveErrors));
+      } catch (hbErr) {
+        audit(config, 'bridge_start', undefined, { warning: `heartbeat write failed: ${(hbErr as Error).message}` });
+      }
 
       // --- 4. Read inbox ---
       const messages = readNewInboxMessages(teamName, workerName);
 
       // --- 5. Find next task ---
       const task = await findNextTask(teamName, workerName);
+
+      // --- 5b. Emit ready after first successful poll cycle ---
+      if (!readyEmitted) {
+        try {
+          appendOutbox(teamName, workerName, {
+            type: 'ready',
+            message: `Worker ${workerName} ready (${provider})`,
+            timestamp: new Date().toISOString()
+          });
+          writeHeartbeat(workingDirectory, buildHeartbeat(config, 'polling', null, consecutiveErrors));
+          audit(config, 'worker_ready');
+          readyEmitted = true;
+        } catch (readyErr) {
+          audit(config, 'bridge_start', undefined, { warning: `ready emission failed: ${(readyErr as Error).message}` });
+        }
+      }
 
       if (task) {
         idleNotified = false;

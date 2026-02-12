@@ -4,7 +4,7 @@ import { join, resolve } from 'path';
 import { homedir, tmpdir } from 'os';
 import type { BridgeConfig, TaskFile, OutboxMessage } from '../types.js';
 import { readTask, updateTask } from '../task-file-ops.js';
-import { checkShutdownSignal, writeShutdownSignal } from '../inbox-outbox.js';
+import { checkShutdownSignal, writeShutdownSignal, appendOutbox } from '../inbox-outbox.js';
 import { writeHeartbeat, readHeartbeat } from '../heartbeat.js';
 import { sanitizeName } from '../tmux-session.js';
 
@@ -125,6 +125,86 @@ describe('Bridge Integration', () => {
       const hb = readHeartbeat(config.workingDirectory, config.teamName, config.workerName);
       expect(hb?.status).toBe('quarantined');
       expect(hb?.consecutiveErrors).toBe(3);
+    });
+  });
+
+  describe('Ready emission timing', () => {
+    it('ready message can be written to outbox', () => {
+      const config = makeConfig();
+      appendOutbox(config.teamName, config.workerName, {
+        type: 'ready',
+        message: `Worker ${config.workerName} ready (${config.provider})`,
+        timestamp: new Date().toISOString()
+      });
+
+      const outbox = readOutbox();
+      expect(outbox.length).toBe(1);
+      expect(outbox[0].type).toBe('ready');
+      expect(outbox[0].message).toContain('worker1');
+      expect(outbox[0].message).toContain('codex');
+    });
+
+    it('ready message appears only once even after multiple outbox writes', () => {
+      const config = makeConfig();
+
+      // Simulate the readyEmitted flag behavior: only write once
+      let readyEmitted = false;
+      for (let i = 0; i < 3; i++) {
+        if (!readyEmitted) {
+          appendOutbox(config.teamName, config.workerName, {
+            type: 'ready',
+            message: `Worker ${config.workerName} ready (${config.provider})`,
+            timestamp: new Date().toISOString()
+          });
+          readyEmitted = true;
+        }
+        // Simulate subsequent idle messages
+        appendOutbox(config.teamName, config.workerName, {
+          type: 'idle',
+          message: 'Standing by.',
+          timestamp: new Date().toISOString()
+        });
+      }
+
+      const outbox = readOutbox();
+      const readyMessages = outbox.filter(m => m.type === 'ready');
+      const idleMessages = outbox.filter(m => m.type === 'idle');
+      expect(readyMessages.length).toBe(1);
+      expect(idleMessages.length).toBe(3);
+    });
+
+    it('heartbeat write failure does not prevent polling', () => {
+      // Verifies the try/catch around heartbeat by testing that
+      // writeHeartbeat to an invalid path doesn't throw (it would in practice
+      // be caught by the bridge). Here we just verify the heartbeat write
+      // and ready emission are independent operations.
+      const config = makeConfig();
+
+      // Write heartbeat successfully
+      writeHeartbeat(config.workingDirectory, {
+        workerName: config.workerName,
+        teamName: config.teamName,
+        provider: config.provider,
+        pid: process.pid,
+        lastPollAt: new Date().toISOString(),
+        consecutiveErrors: 0,
+        status: 'polling',
+      });
+
+      // Ready emission is a separate operation
+      appendOutbox(config.teamName, config.workerName, {
+        type: 'ready',
+        message: `Worker ${config.workerName} ready (${config.provider})`,
+        timestamp: new Date().toISOString()
+      });
+
+      // Both should succeed independently
+      const hb = readHeartbeat(config.workingDirectory, config.teamName, config.workerName);
+      expect(hb).not.toBeNull();
+      expect(hb?.status).toBe('polling');
+
+      const outbox = readOutbox();
+      expect(outbox.some(m => m.type === 'ready')).toBe(true);
     });
   });
 

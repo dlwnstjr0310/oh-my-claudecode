@@ -28,6 +28,7 @@ const CATEGORY_MAP: Record<AuditEventType, ActivityEntry['category']> = {
   task_completed: 'task',
   task_failed: 'error',
   task_permanently_failed: 'error',
+  worker_ready: 'lifecycle',
   worker_quarantined: 'error',
   worker_idle: 'lifecycle',
   inbox_rotated: 'lifecycle',
@@ -51,6 +52,7 @@ function describeEvent(event: AuditEvent): string {
     case 'task_completed': return `Completed task ${event.taskId || '(unknown)'}`;
     case 'task_failed': return `Task ${event.taskId || '(unknown)'} failed`;
     case 'task_permanently_failed': return `Task ${event.taskId || '(unknown)'} permanently failed`;
+    case 'worker_ready': return 'Worker ready after first successful poll';
     case 'worker_quarantined': return 'Self-quarantined due to errors';
     case 'worker_idle': return 'Standing by (idle)';
     case 'inbox_rotated': return 'Rotated inbox log';

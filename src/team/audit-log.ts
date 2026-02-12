@@ -19,6 +19,7 @@ export type AuditEventType =
   | 'task_completed'
   | 'task_failed'
   | 'task_permanently_failed'
+  | 'worker_ready'
   | 'worker_quarantined'
   | 'worker_idle'
   | 'inbox_rotated'
