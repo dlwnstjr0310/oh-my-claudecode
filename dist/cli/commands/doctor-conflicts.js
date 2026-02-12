@@ -129,6 +129,7 @@ export function checkConfigIssues() {
             'setupVersion',
             'stopHookCallbacks',
             'notifications',
+            'autoUpgradePrompt',
         ]);
         for (const field of Object.keys(config)) {
             if (!knownFields.has(field)) {

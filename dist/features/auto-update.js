@@ -79,6 +79,7 @@ export function getOMCConfig() {
             stopHookCallbacks: config.stopHookCallbacks,
             notifications: config.notifications,
             hudEnabled: config.hudEnabled,
+            autoUpgradePrompt: config.autoUpgradePrompt,
         };
     }
     catch {
@@ -91,6 +92,13 @@ export function getOMCConfig() {
  */
 export function isSilentAutoUpdateEnabled() {
     return getOMCConfig().silentAutoUpdate;
+}
+/**
+ * Check if auto-upgrade prompt is enabled at session start
+ * Returns true by default - users must explicitly opt out
+ */
+export function isAutoUpgradePromptEnabled() {
+    return getOMCConfig().autoUpgradePrompt !== false;
 }
 /**
  * Check if ecomode is enabled

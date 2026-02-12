@@ -208,19 +208,43 @@ async function main() {
 
     const updateInfo = currentVersion ? await checkForUpdates(currentVersion) : null;
     if (updateInfo) {
-      messages.push(`<session-restore>
+      // Read config to check autoUpgradePrompt preference
+      const configPath = join(homedir(), '.claude', '.omc-config.json');
+      const omcConfig = readJsonFile(configPath) || {};
+      const autoUpgradePrompt = omcConfig.autoUpgradePrompt !== false; // default: true
+
+      if (autoUpgradePrompt) {
+        messages.push(`<session-restore>
+
+[OMC AUTO-UPGRADE AVAILABLE]
+
+oh-my-claudecode v${updateInfo.latestVersion} is available (current: v${updateInfo.currentVersion}).
+
+ACTION: Use AskUserQuestion to ask the user if they want to upgrade now. Offer these options:
+- "Upgrade now" (Recommended): Run \`npm install -g oh-my-claude-sisyphus@latest\` via Bash, then run \`omc install --force --skip-claude-check --refresh-hooks\` to reconcile hooks and CLAUDE.md
+- "Skip this time": Continue the session without upgrading
+- "Don't ask again": Tell the user to set "autoUpgradePrompt": false in ~/.claude/.omc-config.json to disable future prompts
+
+Keep the prompt brief. If the user accepts, execute the upgrade commands and report the result.
+
+</session-restore>
+
+---
+`);
+      } else {
+        messages.push(`<session-restore>
 
 [OMC UPDATE AVAILABLE]
 
 A new version of oh-my-claudecode is available: v${updateInfo.latestVersion} (current: ${updateInfo.currentVersion})
 
 To update, run: omc update
-(This syncs plugin, npm package, and CLAUDE.md together)
 
 </session-restore>
 
 ---
 `);
+      }
     }
 
     // Check for ultrawork state - only restore if session matches (issue #311)

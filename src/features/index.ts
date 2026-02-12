@@ -46,7 +46,9 @@ export {
   hasPendingUpdateRestart,
   clearPendingUpdateRestart,
   getPendingUpdateVersion,
-  initSilentAutoUpdate
+  initSilentAutoUpdate,
+  // Auto-upgrade prompt
+  isAutoUpgradePromptEnabled
 } from './auto-update.js';
 
 // Boulder State - session/plan tracking

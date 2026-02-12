@@ -156,6 +156,7 @@ export function checkConfigIssues(): ConflictReport['configIssues'] {
       'setupVersion',
       'stopHookCallbacks',
       'notifications',
+      'autoUpgradePrompt',
     ]);
 
     for (const field of Object.keys(config)) {

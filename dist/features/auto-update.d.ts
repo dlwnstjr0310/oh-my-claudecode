@@ -96,6 +96,9 @@ export interface OMCConfig {
     notifications?: NotificationConfig;
     /** Whether HUD statusline is enabled (default: true). Set to false to skip HUD installation. */
     hudEnabled?: boolean;
+    /** Whether to prompt for upgrade at session start when a new version is available (default: true).
+     *  Set to false to show a passive notification instead of an interactive prompt. */
+    autoUpgradePrompt?: boolean;
 }
 /**
  * Read the OMC configuration
@@ -105,6 +108,11 @@ export declare function getOMCConfig(): OMCConfig;
  * Check if silent auto-updates are enabled
  */
 export declare function isSilentAutoUpdateEnabled(): boolean;
+/**
+ * Check if auto-upgrade prompt is enabled at session start
+ * Returns true by default - users must explicitly opt out
+ */
+export declare function isAutoUpgradePromptEnabled(): boolean;
 /**
  * Check if ecomode is enabled
  * Returns true by default if not explicitly disabled

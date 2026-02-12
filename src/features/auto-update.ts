@@ -142,6 +142,9 @@ export interface OMCConfig {
   notifications?: NotificationConfig;
   /** Whether HUD statusline is enabled (default: true). Set to false to skip HUD installation. */
   hudEnabled?: boolean;
+  /** Whether to prompt for upgrade at session start when a new version is available (default: true).
+   *  Set to false to show a passive notification instead of an interactive prompt. */
+  autoUpgradePrompt?: boolean;
 }
 
 /**
@@ -169,6 +172,7 @@ export function getOMCConfig(): OMCConfig {
       stopHookCallbacks: config.stopHookCallbacks,
       notifications: config.notifications,
       hudEnabled: config.hudEnabled,
+      autoUpgradePrompt: config.autoUpgradePrompt,
     };
   } catch {
     // If config file is invalid, default to disabled for security
@@ -181,6 +185,14 @@ export function getOMCConfig(): OMCConfig {
  */
 export function isSilentAutoUpdateEnabled(): boolean {
   return getOMCConfig().silentAutoUpdate;
+}
+
+/**
+ * Check if auto-upgrade prompt is enabled at session start
+ * Returns true by default - users must explicitly opt out
+ */
+export function isAutoUpgradePromptEnabled(): boolean {
+  return getOMCConfig().autoUpgradePrompt !== false;
 }
 
 /**

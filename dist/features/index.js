@@ -9,7 +9,9 @@ REPO_OWNER, REPO_NAME, GITHUB_API_URL, GITHUB_RAW_URL, CLAUDE_CONFIG_DIR, VERSIO
 // Functions
 getInstalledVersion, saveVersionMetadata, updateLastCheckTime, fetchLatestRelease, compareVersions, checkForUpdates, performUpdate, formatUpdateNotification, shouldCheckForUpdates, backgroundUpdateCheck, interactiveUpdate, 
 // Silent auto-update
-silentAutoUpdate, hasPendingUpdateRestart, clearPendingUpdateRestart, getPendingUpdateVersion, initSilentAutoUpdate } from './auto-update.js';
+silentAutoUpdate, hasPendingUpdateRestart, clearPendingUpdateRestart, getPendingUpdateVersion, initSilentAutoUpdate, 
+// Auto-upgrade prompt
+isAutoUpgradePromptEnabled } from './auto-update.js';
 // Boulder State - session/plan tracking
 export { 
 // Constants
