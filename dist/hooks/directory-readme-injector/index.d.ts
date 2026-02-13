@@ -22,7 +22,11 @@ export declare function createDirectoryReadmeInjectorHook(workingDirectory: stri
      */
     processToolExecution: (toolName: string, filePath: string, sessionID: string) => string;
     /**
-     * Get READMEs for a specific file without marking as injected.
+     * Get context files (README.md, AGENTS.md) for a specific file without marking as injected.
+     */
+    getContextFilesForFile: (filePath: string) => string[];
+    /**
+     * @deprecated Use getContextFilesForFile instead
      */
     getReadmesForFile: (filePath: string) => string[];
     /**

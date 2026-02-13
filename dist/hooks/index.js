@@ -67,8 +67,8 @@ export {
 // Background Notification
 createBackgroundNotificationHook, processBackgroundNotification, processBackgroundNotificationHook, checkBackgroundNotifications, handleBackgroundEvent, HOOK_NAME as BACKGROUND_NOTIFICATION_HOOK_NAME } from './background-notification/index.js';
 export { 
-// Directory README Injector
-createDirectoryReadmeInjectorHook, getReadmesForPath, loadInjectedPaths, saveInjectedPaths, clearInjectedPaths, README_INJECTOR_STORAGE, README_FILENAME, TRACKED_TOOLS as README_TRACKED_TOOLS } from './directory-readme-injector/index.js';
+// Directory README / AGENTS.md Injector
+createDirectoryReadmeInjectorHook, getReadmesForPath, loadInjectedPaths, saveInjectedPaths, clearInjectedPaths, README_INJECTOR_STORAGE, README_FILENAME, AGENTS_FILENAME, CONTEXT_FILENAMES, TRACKED_TOOLS as README_TRACKED_TOOLS } from './directory-readme-injector/index.js';
 export { 
 // Empty Message Sanitizer
 createEmptyMessageSanitizerHook, sanitizeMessages, sanitizeMessage, hasTextContent, isToolPart, hasValidContent, PLACEHOLDER_TEXT, TOOL_PART_TYPES, HOOK_NAME as EMPTY_MESSAGE_SANITIZER_HOOK_NAME, DEBUG_PREFIX as EMPTY_MESSAGE_SANITIZER_DEBUG_PREFIX, ERROR_PATTERNS as EMPTY_MESSAGE_SANITIZER_ERROR_PATTERNS } from './empty-message-sanitizer/index.js';

@@ -15,7 +15,7 @@ import {
   saveInjectedPaths,
   clearInjectedPaths,
 } from './storage.js';
-import { README_FILENAME, TRACKED_TOOLS } from './constants.js';
+import { CONTEXT_FILENAMES, TRACKED_TOOLS } from './constants.js';
 
 // Re-export submodules
 export * from './types.js';
@@ -81,17 +81,19 @@ export function createDirectoryReadmeInjectorHook(workingDirectory: string) {
   }
 
   /**
-   * Find README.md files by walking up the directory tree.
+   * Find context files (README.md, AGENTS.md) by walking up the directory tree.
    * Returns paths in order from root to leaf.
    */
-  function findReadmeMdUp(startDir: string): string[] {
+  function findContextFilesUp(startDir: string): string[] {
     const found: string[] = [];
     let current = startDir;
 
     while (true) {
-      const readmePath = join(current, README_FILENAME);
-      if (existsSync(readmePath)) {
-        found.push(readmePath);
+      for (const filename of CONTEXT_FILENAMES) {
+        const filePath = join(current, filename);
+        if (existsSync(filePath)) {
+          found.push(filePath);
+        }
       }
 
       // Stop at working directory root
@@ -111,9 +113,18 @@ export function createDirectoryReadmeInjectorHook(workingDirectory: string) {
   }
 
   /**
-   * Process a file path and return README content to inject.
+   * Get a human-readable label for a context file.
    */
-  function processFilePathForReadmes(
+  function getContextLabel(filePath: string): string {
+    if (filePath.endsWith('AGENTS.md')) return 'Project AGENTS';
+    return 'Project README';
+  }
+
+  /**
+   * Process a file path and return context file content to inject.
+   * Finds both README.md and AGENTS.md files walking up the directory tree.
+   */
+  function processFilePathForContextFiles(
     filePath: string,
     sessionID: string
   ): string {
@@ -122,24 +133,26 @@ export function createDirectoryReadmeInjectorHook(workingDirectory: string) {
 
     const dir = dirname(resolved);
     const cache = getSessionCache(sessionID);
-    const readmePaths = findReadmeMdUp(dir);
+    const contextPaths = findContextFilesUp(dir);
 
     let output = '';
 
-    for (const readmePath of readmePaths) {
-      const readmeDir = dirname(readmePath);
-      if (cache.has(readmeDir)) continue;
+    for (const contextPath of contextPaths) {
+      // Track by full file path to allow both README.md and AGENTS.md
+      // from the same directory to be independently injected
+      if (cache.has(contextPath)) continue;
 
       try {
-        const content = readFileSync(readmePath, 'utf-8');
+        const content = readFileSync(contextPath, 'utf-8');
         const { result, truncated } = truncateContent(content);
 
         const truncationNotice = truncated
-          ? `\n\n[Note: Content was truncated to save context window space. For full context, please read the file directly: ${readmePath}]`
+          ? `\n\n[Note: Content was truncated to save context window space. For full context, please read the file directly: ${contextPath}]`
           : '';
 
-        output += `\n\n[Project README: ${readmePath}]\n${result}${truncationNotice}`;
-        cache.add(readmeDir);
+        const label = getContextLabel(contextPath);
+        output += `\n\n[${label}: ${contextPath}]\n${result}${truncationNotice}`;
+        cache.add(contextPath);
       } catch {
         // Skip files that can't be read
       }
@@ -165,18 +178,29 @@ export function createDirectoryReadmeInjectorHook(workingDirectory: string) {
         return '';
       }
 
-      return processFilePathForReadmes(filePath, sessionID);
+      return processFilePathForContextFiles(filePath, sessionID);
     },
 
     /**
-     * Get READMEs for a specific file without marking as injected.
+     * Get context files (README.md, AGENTS.md) for a specific file without marking as injected.
+     */
+    getContextFilesForFile: (filePath: string): string[] => {
+      const resolved = resolveFilePath(filePath);
+      if (!resolved) return [];
+
+      const dir = dirname(resolved);
+      return findContextFilesUp(dir);
+    },
+
+    /**
+     * @deprecated Use getContextFilesForFile instead
      */
     getReadmesForFile: (filePath: string): string[] => {
       const resolved = resolveFilePath(filePath);
       if (!resolved) return [];
 
       const dir = dirname(resolved);
-      return findReadmeMdUp(dir);
+      return findContextFilesUp(dir);
     },
 
     /**

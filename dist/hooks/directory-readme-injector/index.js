@@ -10,7 +10,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { loadInjectedPaths, saveInjectedPaths, clearInjectedPaths, } from './storage.js';
-import { README_FILENAME, TRACKED_TOOLS } from './constants.js';
+import { CONTEXT_FILENAMES, TRACKED_TOOLS } from './constants.js';
 // Re-export submodules
 export * from './types.js';
 export * from './constants.js';
@@ -57,16 +57,18 @@ export function createDirectoryReadmeInjectorHook(workingDirectory) {
         return resolve(workingDirectory, filePath);
     }
     /**
-     * Find README.md files by walking up the directory tree.
+     * Find context files (README.md, AGENTS.md) by walking up the directory tree.
      * Returns paths in order from root to leaf.
      */
-    function findReadmeMdUp(startDir) {
+    function findContextFilesUp(startDir) {
         const found = [];
         let current = startDir;
         while (true) {
-            const readmePath = join(current, README_FILENAME);
-            if (existsSync(readmePath)) {
-                found.push(readmePath);
+            for (const filename of CONTEXT_FILENAMES) {
+                const filePath = join(current, filename);
+                if (existsSync(filePath)) {
+                    found.push(filePath);
+                }
             }
             // Stop at working directory root
             if (current === workingDirectory)
@@ -84,28 +86,39 @@ export function createDirectoryReadmeInjectorHook(workingDirectory) {
         return found.reverse();
     }
     /**
-     * Process a file path and return README content to inject.
+     * Get a human-readable label for a context file.
      */
-    function processFilePathForReadmes(filePath, sessionID) {
+    function getContextLabel(filePath) {
+        if (filePath.endsWith('AGENTS.md'))
+            return 'Project AGENTS';
+        return 'Project README';
+    }
+    /**
+     * Process a file path and return context file content to inject.
+     * Finds both README.md and AGENTS.md files walking up the directory tree.
+     */
+    function processFilePathForContextFiles(filePath, sessionID) {
         const resolved = resolveFilePath(filePath);
         if (!resolved)
             return '';
         const dir = dirname(resolved);
         const cache = getSessionCache(sessionID);
-        const readmePaths = findReadmeMdUp(dir);
+        const contextPaths = findContextFilesUp(dir);
         let output = '';
-        for (const readmePath of readmePaths) {
-            const readmeDir = dirname(readmePath);
-            if (cache.has(readmeDir))
+        for (const contextPath of contextPaths) {
+            // Track by full file path to allow both README.md and AGENTS.md
+            // from the same directory to be independently injected
+            if (cache.has(contextPath))
                 continue;
             try {
-                const content = readFileSync(readmePath, 'utf-8');
+                const content = readFileSync(contextPath, 'utf-8');
                 const { result, truncated } = truncateContent(content);
                 const truncationNotice = truncated
-                    ? `\n\n[Note: Content was truncated to save context window space. For full context, please read the file directly: ${readmePath}]`
+                    ? `\n\n[Note: Content was truncated to save context window space. For full context, please read the file directly: ${contextPath}]`
                     : '';
-                output += `\n\n[Project README: ${readmePath}]\n${result}${truncationNotice}`;
-                cache.add(readmeDir);
+                const label = getContextLabel(contextPath);
+                output += `\n\n[${label}: ${contextPath}]\n${result}${truncationNotice}`;
+                cache.add(contextPath);
             }
             catch {
                 // Skip files that can't be read
@@ -124,17 +137,27 @@ export function createDirectoryReadmeInjectorHook(workingDirectory) {
             if (!TRACKED_TOOLS.includes(toolName.toLowerCase())) {
                 return '';
             }
-            return processFilePathForReadmes(filePath, sessionID);
+            return processFilePathForContextFiles(filePath, sessionID);
         },
         /**
-         * Get READMEs for a specific file without marking as injected.
+         * Get context files (README.md, AGENTS.md) for a specific file without marking as injected.
+         */
+        getContextFilesForFile: (filePath) => {
+            const resolved = resolveFilePath(filePath);
+            if (!resolved)
+                return [];
+            const dir = dirname(resolved);
+            return findContextFilesUp(dir);
+        },
+        /**
+         * @deprecated Use getContextFilesForFile instead
          */
         getReadmesForFile: (filePath) => {
             const resolved = resolveFilePath(filePath);
             if (!resolved)
                 return [];
             const dir = dirname(resolved);
-            return findReadmeMdUp(dir);
+            return findContextFilesUp(dir);
         },
         /**
          * Clear session cache when session ends.

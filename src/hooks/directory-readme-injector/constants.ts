@@ -19,5 +19,11 @@ export const README_INJECTOR_STORAGE = join(
 /** README filename to search for */
 export const README_FILENAME = 'README.md';
 
-/** Tools that trigger README injection */
+/** AGENTS.md filename to search for (deepinit output) */
+export const AGENTS_FILENAME = 'AGENTS.md';
+
+/** All context filenames to search for during directory walks */
+export const CONTEXT_FILENAMES = [README_FILENAME, AGENTS_FILENAME];
+
+/** Tools that trigger context file injection */
 export const TRACKED_TOOLS = ['read', 'write', 'edit', 'multiedit'];
