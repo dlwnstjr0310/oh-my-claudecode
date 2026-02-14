@@ -12,7 +12,7 @@
 import { existsSync, readFileSync, unlinkSync } from 'fs';
 import { join } from 'path';
 import { getClaudeConfigDir } from '../../utils/paths.js';
-import { readUltraworkState, incrementReinforcement, deactivateUltrawork, getUltraworkPersistenceMessage } from '../ultrawork/index.js';
+import { readUltraworkState, writeUltraworkState, incrementReinforcement, deactivateUltrawork, getUltraworkPersistenceMessage } from '../ultrawork/index.js';
 import { resolveToWorktreeRoot } from '../../lib/worktree-paths.js';
 import { readRalphState, incrementRalphIteration, clearRalphState, getPrdCompletionStatus, getRalphContext, readVerificationState, recordArchitectFeedback, getArchitectVerificationPrompt, getArchitectRejectionContinuationPrompt, detectArchitectApproval, detectArchitectRejection, clearVerificationState } from '../ralph/index.js';
 import { checkIncompleteTodos, getNextPendingTodo, isUserAbort, isContextLimitStop } from '../todo-continuation/index.js';
@@ -187,6 +187,25 @@ async function checkRalphLoop(sessionId, directory) {
     // Strict session isolation: only process state for matching session
     if (state.session_id !== sessionId) {
         return null;
+    }
+    // Self-heal linked ultrawork: if ralph is active and marked linked but ultrawork
+    // state is missing, recreate it so stop reinforcement cannot silently disappear.
+    if (state.linked_ultrawork) {
+        const ultraworkState = readUltraworkState(workingDir, sessionId);
+        if (!ultraworkState?.active) {
+            const now = new Date().toISOString();
+            const restoredState = {
+                active: true,
+                started_at: state.started_at || now,
+                original_prompt: state.prompt || 'Ralph loop task',
+                session_id: sessionId,
+                project_path: workingDir,
+                reinforcement_count: 0,
+                last_checked_at: now,
+                linked_to_ralph: true
+            };
+            writeUltraworkState(restoredState, workingDir, sessionId);
+        }
     }
     // Check team pipeline state coordination
     // When team mode is active alongside ralph, respect team phase transitions

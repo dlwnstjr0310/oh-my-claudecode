@@ -40,7 +40,7 @@ export interface RalphLoopOptions {
     disableUltrawork?: boolean;
 }
 export interface RalphLoopHook {
-    startLoop: (sessionId: string, prompt: string, options?: RalphLoopOptions) => boolean;
+    startLoop: (sessionId: string | undefined, prompt: string, options?: RalphLoopOptions) => boolean;
     cancelLoop: (sessionId: string) => boolean;
     getState: () => RalphLoopState | null;
 }

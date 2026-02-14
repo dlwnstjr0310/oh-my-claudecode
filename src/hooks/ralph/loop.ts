@@ -105,7 +105,7 @@ export interface RalphLoopOptions {
 
 export interface RalphLoopHook {
   startLoop: (
-    sessionId: string,
+    sessionId: string | undefined,
     prompt: string,
     options?: RalphLoopOptions,
   ) => boolean;
@@ -276,7 +276,7 @@ export function incrementRalphIteration(
  */
 export function createRalphLoopHook(directory: string): RalphLoopHook {
   const startLoop = (
-    sessionId: string,
+    sessionId: string | undefined,
     prompt: string,
     options?: RalphLoopOptions,
   ): boolean => {

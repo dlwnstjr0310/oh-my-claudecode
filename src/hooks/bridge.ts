@@ -312,7 +312,7 @@ async function processKeywordDetector(input: HookInput): Promise<HookOutput> {
         const { createRalphLoopHook } = await import("./ralph/index.js");
         // Activate ralph state which also auto-activates ultrawork
         const hook = createRalphLoopHook(directory);
-        hook.startLoop(sessionId || "cli-session", promptText);
+        hook.startLoop(sessionId, promptText);
         messages.push(RALPH_MESSAGE);
         break;
       }
@@ -868,9 +868,49 @@ function processPreToolUse(input: HookInput): HookOutput {
 /**
  * Process post-tool-use hook
  */
-function processPostToolUse(input: HookInput): HookOutput {
+function getInvokedSkillName(toolInput: unknown): string | null {
+  if (!toolInput || typeof toolInput !== "object") {
+    return null;
+  }
+
+  const input = toolInput as Record<string, unknown>;
+  const rawSkill =
+    input.skill ??
+    input.skill_name ??
+    input.skillName ??
+    input.command ??
+    null;
+
+  if (typeof rawSkill !== "string" || rawSkill.trim().length === 0) {
+    return null;
+  }
+
+  const normalized = rawSkill.trim();
+  const namespaced = normalized.includes(":")
+    ? normalized.split(":").at(-1)
+    : normalized;
+  return namespaced?.toLowerCase() || null;
+}
+
+async function processPostToolUse(input: HookInput): Promise<HookOutput> {
   const directory = resolveToWorktreeRoot(input.directory);
   const messages: string[] = [];
+
+  // Ensure mode state activation also works when execution starts via Skill tool
+  // (e.g., ralplan consensus handoff into Skill("oh-my-claudecode:ralph")).
+  const toolName = (input.toolName || "").toLowerCase();
+  if (toolName === "skill") {
+    const skillName = getInvokedSkillName(input.toolInput);
+    if (skillName === "ralph") {
+      const { createRalphLoopHook } = await import("./ralph/index.js");
+      const promptText =
+        typeof input.prompt === "string" && input.prompt.trim().length > 0
+          ? input.prompt
+          : "Ralph loop activated via Skill tool";
+      const hook = createRalphLoopHook(directory);
+      hook.startLoop(input.sessionId, promptText);
+    }
+  }
 
   // Run orchestrator post-tool processing (remember tags, verification reminders, etc.)
   const orchestratorResult = processOrchestratorPostTool(
@@ -1002,7 +1042,7 @@ export async function processHook(
         return processPreToolUse(input);
 
       case "post-tool-use":
-        return processPostToolUse(input);
+        return await processPostToolUse(input);
 
       case "autopilot":
         return await processAutopilot(input);
