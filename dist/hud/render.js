@@ -264,8 +264,6 @@ export async function render(context, config) {
         if (bg)
             elements.push(bg);
     }
-    // Call counts — always displayed even when zero
-    elements.push(dim(`tools:${context.toolCallCount} | agents:${context.agentCallCount} | skills:${context.skillCallCount}`));
     // Compose output
     const outputLines = [];
     // Git info line (separate line above HUD header)

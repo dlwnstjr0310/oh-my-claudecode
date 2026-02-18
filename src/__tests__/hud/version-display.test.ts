@@ -22,9 +22,6 @@ function createMinimalContext(overrides: Partial<HudRenderContext> = {}): HudRen
     sessionHealth: null,
     omcVersion: null,
     updateAvailable: null,
-    toolCallCount: 0,
-    agentCallCount: 0,
-    skillCallCount: 0,
     ...overrides,
   };
 }

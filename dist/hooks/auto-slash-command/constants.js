@@ -12,25 +12,6 @@ export const AUTO_SLASH_COMMAND_TAG_CLOSE = '</auto-slash-command>';
 /** Pattern to detect slash commands at start of message */
 export const SLASH_COMMAND_PATTERN = /^\/([a-zA-Z][\w-]*)\s*(.*)/;
 /**
- * Claude Code native commands whose short names OMC must not shadow.
- *
- * Keep this in sync with CC_NATIVE_COMMANDS in src/features/builtin-skills/skills.ts.
- * Skills whose short name matches an entry here are renamed to 'omc-<name>' in the
- * builtin-skills registry and are also excluded from the auto-slash-command hook so
- * that typing e.g. /review or /plan invokes the native CC behaviour, not an OMC skill.
- */
-export const CC_NATIVE_COMMANDS = new Set([
-    'review',
-    'plan',
-    'security-review',
-    'init',
-    'doctor',
-    'help',
-    'config',
-    'clear',
-    'memory',
-]);
-/**
  * Commands that should NOT be auto-expanded
  * (they have special handling elsewhere or are now skills with oh-my-claudecode: prefix)
  */
@@ -47,14 +28,5 @@ export const EXCLUDED_COMMANDS = new Set([
     'history',
     'exit',
     'quit',
-    // Claude Code native commands — short-name aliases that must pass through to CC unchanged.
-    // Derived from CC_NATIVE_COMMANDS above (kept in sync manually).
-    'review',
-    'plan',
-    'security-review',
-    'init',
-    'doctor',
-    'config',
-    'memory',
 ]);
 //# sourceMappingURL=constants.js.map

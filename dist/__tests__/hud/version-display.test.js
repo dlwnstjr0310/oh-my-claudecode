@@ -20,9 +20,6 @@ function createMinimalContext(overrides = {}) {
         sessionHealth: null,
         omcVersion: null,
         updateAvailable: null,
-        toolCallCount: 0,
-        agentCallCount: 0,
-        skillCallCount: 0,
         ...overrides,
     };
 }

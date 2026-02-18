@@ -11,7 +11,6 @@
 import { existsSync, readdirSync, readFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
-import { CC_NATIVE_COMMANDS } from '../../hooks/auto-slash-command/constants.js';
 // Get the project root directory (go up from src/features/builtin-skills/)
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -69,6 +68,22 @@ function loadSkillFromFile(skillPath, skillName) {
         return null;
     }
 }
+/**
+ * Claude Code native commands that must not be shadowed by OMC skill short names.
+ * Skills with these names will still load but their name will be prefixed with 'omc-'
+ * to avoid overriding built-in /review, /plan, /security-review etc.
+ */
+const CC_NATIVE_COMMANDS = new Set([
+    'review',
+    'plan',
+    'security-review',
+    'init',
+    'doctor',
+    'help',
+    'config',
+    'clear',
+    'memory',
+]);
 /**
  * Load all skills from the skills/ directory
  */

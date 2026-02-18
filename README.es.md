@@ -41,13 +41,10 @@ Eso es todo. Todo lo demás es automático.
 ### Actualizar
 
 ```bash
-# 1. Sincronizar el marketplace para obtener la ultima version
-/plugin marketplace update https://github.com/Yeachan-Heo/oh-my-claudecode
-
-# 2. Reinstalar el plugin desde el marketplace actualizado
+# 1. Actualizar el plugin
 /plugin install oh-my-claudecode
 
-# 3. Volver a ejecutar el setup para actualizar la configuracion
+# 2. Volver a ejecutar el setup para actualizar la configuracion
 /oh-my-claudecode:omc-setup
 ```
 

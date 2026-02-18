@@ -65,13 +65,10 @@ Ative os times nativos do Claude Code em `~/.claude/settings.json`:
 ### Atualizando
 
 ```bash
-# 1. Sincronize o marketplace para buscar a versão mais recente
-/plugin marketplace update https://github.com/Yeachan-Heo/oh-my-claudecode
-
-# 2. Reinstale o plugin a partir do marketplace atualizado
+# 1. Atualize o plugin
 /plugin install oh-my-claudecode
 
-# 3. Execute o setup novamente para atualizar a configuração
+# 2. Execute o setup novamente para atualizar a configuração
 /oh-my-claudecode:omc-setup
 ```
 

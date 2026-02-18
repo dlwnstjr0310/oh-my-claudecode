@@ -424,9 +424,6 @@ async function main(): Promise<void> {
       ),
       omcVersion,
       updateAvailable,
-      toolCallCount: transcriptData.toolCallCount,
-      agentCallCount: transcriptData.agentCallCount,
-      skillCallCount: transcriptData.skillCallCount,
     };
 
     // Debug: log data if OMC_DEBUG is set

@@ -41,13 +41,10 @@ autopilot: build a REST API for managing tasks
 ### 更新
 
 ```bash
-# 1. 同步 marketplace 以获取最新版本
-/plugin marketplace update https://github.com/Yeachan-Heo/oh-my-claudecode
-
-# 2. 从更新后的 marketplace 重新安装插件
+# 1. 更新插件
 /plugin install oh-my-claudecode
 
-# 3. 重新运行设置以刷新配置
+# 2. 重新运行设置以刷新配置
 /oh-my-claudecode:omc-setup
 ```
 

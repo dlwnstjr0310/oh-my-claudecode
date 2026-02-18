@@ -41,13 +41,10 @@ autopilot: build a REST API for managing tasks
 ### 업데이트
 
 ```bash
-# 1. 마켓플레이스를 동기화하여 최신 버전을 가져오기
-/plugin marketplace update https://github.com/Yeachan-Heo/oh-my-claudecode
-
-# 2. 업데이트된 마켓플레이스에서 플러그인 재설치
+# 1. 플러그인 업데이트
 /plugin install oh-my-claudecode
 
-# 3. 셋업을 다시 실행하여 설정 갱신
+# 2. 셋업을 다시 실행하여 설정 갱신
 /oh-my-claudecode:omc-setup
 ```
 

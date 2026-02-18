@@ -325,9 +325,6 @@ async function main() {
             sessionHealth: await calculateSessionHealth(sessionStart, getContextPercent(stdin), stdin, config.thresholds),
             omcVersion,
             updateAvailable,
-            toolCallCount: transcriptData.toolCallCount,
-            agentCallCount: transcriptData.agentCallCount,
-            skillCallCount: transcriptData.skillCallCount,
         };
         // Debug: log data if OMC_DEBUG is set
         if (process.env.OMC_DEBUG) {

@@ -292,9 +292,6 @@ export async function render(context: HudRenderContext, config: HudConfig): Prom
     if (bg) elements.push(bg);
   }
 
-  // Call counts — always displayed even when zero
-  elements.push(dim(`tools:${context.toolCallCount} | agents:${context.agentCallCount} | skills:${context.skillCallCount}`));
-
   // Compose output
   const outputLines: string[] = [];
 

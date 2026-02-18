@@ -2,8 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { LSP_SERVERS, getServerForFile, getServerForLanguage } from '../tools/lsp/servers.js';
 describe('LSP Server Configurations', () => {
     const serverKeys = Object.keys(LSP_SERVERS);
-    it('should have 18 configured servers', () => {
-        expect(serverKeys).toHaveLength(18);
+    it('should have 17 configured servers', () => {
+        expect(serverKeys).toHaveLength(17);
     });
     it.each(serverKeys)('server "%s" should have valid config', (key) => {
         const config = LSP_SERVERS[key];
