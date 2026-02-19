@@ -739,39 +739,57 @@ export function install(options: InstallOptions = {}): InstallResult {
         const hooksConfig = getHooksSettingsConfig();
         const newHooks = hooksConfig.hooks;
 
-        // Deep merge: add our hooks, check for conflicts, or update if --force/--forceHooks is used
+        // Merge hooks per event type:
+        //   - No force:        skip already-configured events; warn about non-OMC hooks
+        //   - --force (update): keep non-OMC groups, replace OMC groups; warn about preserved non-OMC hooks
+        //   - --force-hooks:   replace everything; warn before clobbering non-OMC hooks
+        type HookEntry = { type: string; command: string };
+        type HookGroup = { hooks: HookEntry[] };
+
         for (const [eventType, eventHooks] of Object.entries(newHooks)) {
+          const newOmcGroups = eventHooks as HookGroup[];
+
           if (!existingHooks[eventType]) {
-            existingHooks[eventType] = eventHooks;
+            // No existing hooks for this event type — add OMC's directly
+            existingHooks[eventType] = newOmcGroups;
             log(`  Added ${eventType} hook`);
           } else {
-            // Check if existing hook is owned by another plugin
-            const existingEventHooks = existingHooks[eventType] as Array<{ hooks: Array<{ type: string; command: string }> }>;
-            let hasNonOmcHook = false;
-            let nonOmcCommand = '';
+            const existingGroups = existingHooks[eventType] as HookGroup[];
 
-            for (const hookGroup of existingEventHooks) {
-              for (const hook of hookGroup.hooks) {
-                if (hook.type === 'command' && !isOmcHook(hook.command)) {
-                  hasNonOmcHook = true;
-                  nonOmcCommand = hook.command;
-                  break;
-                }
+            // Partition existing groups: non-OMC groups are preserved, OMC groups are replaced
+            const nonOmcGroups = existingGroups.filter(group =>
+              group.hooks.some(h => h.type === 'command' && !isOmcHook(h.command))
+            );
+            const hasNonOmcHook = nonOmcGroups.length > 0;
+            const nonOmcCommand = hasNonOmcHook
+              ? nonOmcGroups[0].hooks.find(h => h.type === 'command' && !isOmcHook(h.command))?.command ?? ''
+              : '';
+
+            if (options.forceHooks && !allowPluginHookRefresh) {
+              // Explicit --force-hooks: replace everything; warn when clobbering non-OMC hooks
+              if (hasNonOmcHook) {
+                log(`  [OMC] Warning: Overwriting non-OMC ${eventType} hook with --force-hooks: ${nonOmcCommand}`);
+                result.hookConflicts.push({ eventType, existingCommand: nonOmcCommand });
               }
-              if (hasNonOmcHook) break;
-            }
-
-            const canOverrideNonOmc = options.forceHooks && !allowPluginHookRefresh;
-
-            if (hasNonOmcHook && !canOverrideNonOmc) {
-              // Conflict detected - don't overwrite
-              log(`  [OMC] Warning: ${eventType} hook owned by another plugin. Skipping. Use --force-hooks to override.`);
-              result.hookConflicts.push({ eventType, existingCommand: nonOmcCommand });
-            } else if (options.force || options.forceHooks) {
-              existingHooks[eventType] = eventHooks;
-              log(`  Updated ${eventType} hook (${options.forceHooks ? '--force-hooks' : '--force'})`);
+              existingHooks[eventType] = newOmcGroups;
+              log(`  Updated ${eventType} hook (--force-hooks)`);
+            } else if (options.force) {
+              // omc update path: merge — keep non-OMC groups, replace OMC groups
+              existingHooks[eventType] = [...nonOmcGroups, ...newOmcGroups];
+              if (hasNonOmcHook) {
+                log(`  Merged ${eventType} hooks (updated OMC hooks, preserved non-OMC hook: ${nonOmcCommand})`);
+                result.hookConflicts.push({ eventType, existingCommand: nonOmcCommand });
+              } else {
+                log(`  Updated ${eventType} hook (--force)`);
+              }
             } else {
-              log(`  ${eventType} hook already configured, skipping`);
+              // No force: skip already-configured events; report non-OMC hooks
+              if (hasNonOmcHook) {
+                log(`  [OMC] Warning: ${eventType} hook has non-OMC hook. Skipping. Use --force-hooks to override.`);
+                result.hookConflicts.push({ eventType, existingCommand: nonOmcCommand });
+              } else {
+                log(`  ${eventType} hook already configured, skipping`);
+              }
             }
           }
         }
