@@ -977,13 +977,13 @@ export function updateTokenUsage(directory, agentId, tokens) {
                     cost_usd: 0,
                 };
             }
-            if (tokens.input_tokens)
+            if (tokens.input_tokens !== undefined)
                 agent.token_usage.input_tokens += tokens.input_tokens;
-            if (tokens.output_tokens)
+            if (tokens.output_tokens !== undefined)
                 agent.token_usage.output_tokens += tokens.output_tokens;
-            if (tokens.cache_read_tokens)
+            if (tokens.cache_read_tokens !== undefined)
                 agent.token_usage.cache_read_tokens += tokens.cache_read_tokens;
-            if (tokens.cost_usd)
+            if (tokens.cost_usd !== undefined)
                 agent.token_usage.cost_usd += tokens.cost_usd;
             writeTrackingState(directory, state);
         }

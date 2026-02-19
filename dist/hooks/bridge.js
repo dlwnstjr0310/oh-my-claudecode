@@ -799,11 +799,23 @@ export async function processHook(hookType, rawInput) {
                     return { continue: true };
                 }
                 const { processSubagentStart } = await import("./subagent-tracker/index.js");
-                const { recordAgentStart } = await import("./subagent-tracker/session-replay.js");
-                const startInput = input;
-                // Record to session replay
-                recordAgentStart(startInput.cwd, startInput.session_id, startInput.agent_id, startInput.agent_type, startInput.prompt, undefined, // parentMode detected in tracker
-                startInput.model);
+                // Reconstruct snake_case fields from normalized camelCase input.
+                // normalizeHookInput maps cwd→directory and session_id→sessionId,
+                // but SubagentStartInput expects the original snake_case field names.
+                const normalized = input;
+                const startInput = {
+                    cwd: (normalized.directory ?? normalized.cwd),
+                    session_id: (normalized.sessionId ?? normalized.session_id),
+                    agent_id: normalized.agent_id,
+                    agent_type: normalized.agent_type,
+                    transcript_path: normalized.transcript_path,
+                    permission_mode: normalized.permission_mode,
+                    hook_event_name: "SubagentStart",
+                    prompt: normalized.prompt,
+                    model: normalized.model,
+                };
+                // recordAgentStart is already called inside processSubagentStart,
+                // so we don't call it here to avoid duplicate session replay entries.
                 return processSubagentStart(startInput);
             }
             case "subagent-stop": {
@@ -811,12 +823,23 @@ export async function processHook(hookType, rawInput) {
                     return { continue: true };
                 }
                 const { processSubagentStop } = await import("./subagent-tracker/index.js");
-                const { recordAgentStop } = await import("./subagent-tracker/session-replay.js");
-                const stopInput = input;
-                const result = processSubagentStop(stopInput);
-                // Record to session replay (default to true when SDK doesn't provide success)
-                recordAgentStop(stopInput.cwd, stopInput.session_id, stopInput.agent_id, stopInput.agent_type, stopInput.success !== false);
-                return result;
+                // Reconstruct snake_case fields from normalized camelCase input.
+                // Same normalization mismatch as subagent-start: cwd→directory, session_id→sessionId.
+                const normalizedStop = input;
+                const stopInput = {
+                    cwd: (normalizedStop.directory ?? normalizedStop.cwd),
+                    session_id: (normalizedStop.sessionId ?? normalizedStop.session_id),
+                    agent_id: normalizedStop.agent_id,
+                    agent_type: normalizedStop.agent_type,
+                    transcript_path: normalizedStop.transcript_path,
+                    permission_mode: normalizedStop.permission_mode,
+                    hook_event_name: "SubagentStop",
+                    output: normalizedStop.output,
+                    success: normalizedStop.success,
+                };
+                // recordAgentStop is already called inside processSubagentStop,
+                // so we don't call it here to avoid duplicate session replay entries.
+                return processSubagentStop(stopInput);
             }
             case "pre-compact": {
                 if (!validateHookInput(input, requiredKeysForHook("pre-compact"), "pre-compact")) {

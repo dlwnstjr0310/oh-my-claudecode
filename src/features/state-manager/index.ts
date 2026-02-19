@@ -175,7 +175,7 @@ export function readState<T = StateData>(
           const data = JSON.parse(content) as T;
           return {
             exists: true,
-            data,
+            data: structuredClone(data) as T,
             foundAt: resolvedPath,
             legacyLocations: legacyPaths,
           };

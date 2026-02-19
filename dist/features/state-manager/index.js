@@ -138,7 +138,7 @@ export function readState(name, location = StateLocation.LOCAL, options) {
                     const data = JSON.parse(content);
                     return {
                         exists: true,
-                        data,
+                        data: structuredClone(data),
                         foundAt: resolvedPath,
                         legacyLocations: legacyPaths,
                     };
