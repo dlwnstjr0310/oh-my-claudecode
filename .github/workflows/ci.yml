@@ -83,3 +83,32 @@ jobs:
           name: dist
           path: dist/
           retention-days: 7
+
+  version-check:
+    name: Version Consistency Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check version consistency
+        run: |
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          PLUGIN_VERSION=$(node -p "require('./.claude-plugin/plugin.json').version")
+          MARKET_VERSION=$(node -p "require('./.claude-plugin/marketplace.json').version")
+          
+          echo "package.json:              $PKG_VERSION"
+          echo ".claude-plugin/plugin.json: $PLUGIN_VERSION"
+          echo ".claude-plugin/marketplace.json: $MARKET_VERSION"
+          
+          if [ "$PKG_VERSION" != "$PLUGIN_VERSION" ] || [ "$PKG_VERSION" != "$MARKET_VERSION" ]; then
+            echo ""
+            echo "❌ Version mismatch!"
+            echo "  package.json: $PKG_VERSION"
+            echo "  plugin.json:  $PLUGIN_VERSION"
+            echo "  marketplace.json: $MARKET_VERSION"
+            echo ""
+            echo "All three files must have the same version."
+            exit 1
+          fi
+          
+          echo "✅ All versions match: $PKG_VERSION"
